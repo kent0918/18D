@@ -20,6 +20,13 @@
             display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; z-index: 10;
             display: none; 
         }
+        
+        /* 抓骰子專用面板 (紅黑單雙模式) */
+        #extract-ui {
+            position: absolute; bottom: 90px; width: 100%;
+            display: none; justify-content: center; flex-wrap: wrap; gap: 10px; z-index: 10;
+        }
+
         button {
             padding: 15px 25px; font-size: 1.1rem; font-weight: bold;
             border: none; border-radius: 30px; cursor: pointer;
@@ -27,10 +34,12 @@
         }
         button:active { transform: scale(0.95); }
         button:disabled { filter: grayscale(100%); cursor: not-allowed; transform: none; }
+        
         .btn-peek { background: #3498db; color: white; }
         .btn-open { background: #e74c3c; color: white; }
         .btn-shake { background: #f1c40f; color: black; min-width: 120px; }
         .btn-menu { background: #7f8c8d; color: white; padding: 15px 20px; }
+        .btn-extract { background: #9b59b6; color: white; padding: 12px 20px; font-size: 1rem; border-radius: 12px; }
 
         #menu-screen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -55,11 +64,7 @@
         #start-btn { background: #2ecc71; color: white; width: 100%; margin-top: 15px; padding: 15px; font-size: 1.3rem; }
         
         #debug-log { position: absolute; top: 10px; left: 10px; color: #aaa; font-size: 12px; pointer-events: none; z-index: 10; display: none; }
-
-        #signature {
-            position: fixed; bottom: 10px; right: 15px; color: rgba(255, 255, 255, 0.3);
-            font-size: 0.85rem; letter-spacing: 1.5px; z-index: 1000; pointer-events: none;
-        }
+        #signature { position: fixed; bottom: 10px; right: 15px; color: rgba(255, 255, 255, 0.3); font-size: 0.85rem; letter-spacing: 1.5px; z-index: 1000; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -69,17 +74,18 @@
             <h1>🍻 派對骰子中心</h1>
             
             <div class="setting-group">
-                <label>選擇遊戲容器：</label>
+                <label>選擇遊戲模式：</label>
                 <select id="game-mode">
                     <option value="cup">🎲 吹牛 (密閉黑骰鐘)</option>
                     <option value="bowl">🥣 十八仔 (古早味白瓷碗)</option>
+                    <option value="extract">🎯 紅黑單雙 (骰鐘取骰挑戰)</option>
                 </select>
             </div>
 
             <div class="setting-group">
                 <label>選擇骰子款式：</label>
                 <select id="dice-style">
-                    <option value="plastic" selected>🎲 經典塑膠 (白底/黑紅點)</option>
+                    <option value="plastic" selected>🎲 高仿塑膠 (白底/黑紅點)</option>
                     <option value="black">🖤 黑金奢華 (黑底/白紅點)</option>
                 </select>
             </div>
@@ -100,56 +106,54 @@
     <div id="canvas-container"></div>
     <div id="debug-log">準備就緒...</div>
 
+    <div id="extract-ui">
+        <button class="btn-extract" onclick="extractDice('red')">拿紅(1,4)</button>
+        <button class="btn-extract" onclick="extractDice('black')">拿黑</button>
+        <button class="btn-extract" onclick="extractDice('odd')">拿單</button>
+        <button class="btn-extract" onclick="extractDice('even')">拿雙</button>
+    </div>
+
     <div id="ui-layer">
         <button class="btn-menu" onclick="backToMenu()">🔙 更換</button>
         <button class="btn-shake" id="shake-btn" onclick="toggleRoll()">⚡ 搖骰</button>
-        <button class="btn-peek" id="peek-btn">👁️ 按住偷看</button>
+        <button class="btn-peek" id="peek-btn">👁️ 偷看</button>
         <button class="btn-open" id="open-btn" onclick="toggleOpen()">🚨 開牌！</button>
     </div>
 
     <div id="signature">蔡肯特製作</div>
 
     <script>
-        // --- 視覺與顏色設定 ---
         const THEME = {
-            diceBg: '#ffffff', dotNormal: '#111111', dotSpecial: '#e71c1c', 
-            metalness: 0.05, roughness: 0.1, bowlColor: '#f0ead6', bowlRimColor: '#40515e' 
+            diceBg: '#fdfdfd', dotNormal: '#111111', dotSpecial: '#e71c1c', 
+            metalness: 0.1, roughness: 0.15, bowlColor: '#f0ead6', bowlRimColor: '#40515e' 
         };
 
         let currentMode = 'cup'; 
         let diceCount = 5;
-        let gameState = 'idle'; // 新增狀態：'idle' (靜止), 'rolling' (持續搖晃中), 'stopping' (減速結算中)
+        let extractedCount = 0; // 取出的骰子數量
+        let gameState = 'idle'; // 'idle', 'rolling', 'stopping'
         
         let scene, camera, renderer, containerGroup, diceArray = [];
         let cupState = 'closed'; 
         let is3DInitialized = false;
 
+        // --- 音效 ---
         let audioCtx;
         function initAudio() {
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
         }
-
         function playClackSound() {
             if (!audioCtx) return;
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            
+            osc.connect(gain); gain.connect(audioCtx.destination);
             osc.type = 'square';
             osc.frequency.setValueAtTime(600 + Math.random() * 400, audioCtx.currentTime);
             osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.03);
-            
             gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.02);
-            
-            osc.start();
-            osc.stop(audioCtx.currentTime + 0.03);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.03);
         }
 
         function changeDice(delta) {
@@ -163,17 +167,18 @@
             if (gameState !== 'idle') return;
             document.getElementById('menu-screen').style.display = 'flex';
             document.getElementById('ui-layer').style.display = 'none';
+            document.getElementById('extract-ui').style.display = 'none';
             document.getElementById('debug-log').style.display = 'none';
         }
 
         function applyDiceStyle() {
             const style = document.getElementById('dice-style').value;
             if (style === 'plastic') {
-                THEME.diceBg = '#fdfdfd'; // 亮白塑膠
-                THEME.dotNormal = '#111111'; // 純黑
-                THEME.dotSpecial = '#e71c1c'; // 鮮紅
+                THEME.diceBg = '#fcfcfc'; 
+                THEME.dotNormal = '#151515'; 
+                THEME.dotSpecial = '#e01515'; // 鮮豔的塑膠紅
                 THEME.metalness = 0.05; 
-                THEME.roughness = 0.1; 
+                THEME.roughness = 0.15; // 塑膠微反光
             } else if (style === 'black') {
                 THEME.diceBg = '#1a1a1a';
                 THEME.dotNormal = '#ffffff';
@@ -187,9 +192,11 @@
             initAudio(); 
             currentMode = document.getElementById('game-mode').value;
             applyDiceStyle(); 
+            extractedCount = 0; // 重置取出數量
 
             document.getElementById('menu-screen').style.display = 'none';
             document.getElementById('ui-layer').style.display = 'flex';
+            document.getElementById('extract-ui').style.display = 'none';
             document.getElementById('debug-log').style.display = 'block';
 
             if (currentMode === 'bowl') {
@@ -219,32 +226,47 @@
             }
 
             const peekBtn = document.getElementById('peek-btn');
-            const startPeek = () => { if(gameState === 'idle' && currentMode === 'cup') cupState = 'peeking'; };
+            const startPeek = () => { if(gameState === 'idle' && currentMode !== 'bowl') cupState = 'peeking'; };
             const endPeek = () => { if(cupState === 'peeking') cupState = 'closed'; };
-            
             peekBtn.addEventListener('mousedown', startPeek);
             peekBtn.addEventListener('touchstart', startPeek, {passive: true});
             window.addEventListener('mouseup', endPeek);
             window.addEventListener('touchend', endPeek, {passive: true});
         }
 
+        // --- 仿真微凹骰子貼圖 ---
         function createDiceTexture(number) {
             const canvas = document.createElement('canvas');
             canvas.width = 256; canvas.height = 256;
             const ctx = canvas.getContext('2d');
             ctx.fillStyle = THEME.diceBg; ctx.fillRect(0, 0, 256, 256);
-            ctx.fillStyle = (number === 1 || number === 4) ? THEME.dotSpecial : THEME.dotNormal;
             
-            const dotSize = 35;
-            const dots = {
-                1: [[128, 128, dotSize * 1.3]], // 1點更大更經典
-                2: [[64, 64, dotSize], [192, 192, dotSize]],
-                3: [[64, 64, dotSize], [128, 128, dotSize], [192, 192, dotSize]],
-                4: [[64, 64, dotSize], [64, 192, dotSize], [192, 64, dotSize], [192, 192, dotSize]],
-                5: [[64, 64, dotSize], [64, 192, dotSize], [128, 128, dotSize], [192, 64, dotSize], [192, 192, dotSize]],
-                6: [[64, 64, dotSize], [64, 128, dotSize], [64, 192, dotSize], [192, 64, dotSize], [192, 128, dotSize], [192, 192, dotSize]]
-            };
-            dots[number].forEach(d => { ctx.beginPath(); ctx.arc(d[0], d[1], d[2], 0, Math.PI * 2); ctx.fill(); });
+            const color = (number === 1 || number === 4) ? THEME.dotSpecial : THEME.dotNormal;
+            
+            // 畫點的函數，帶有微凹的高光立體感
+            function drawDot(x, y, r) {
+                ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+                ctx.fillStyle = color; ctx.fill();
+                // 畫內部陰影高光，製造凹陷感
+                ctx.beginPath(); ctx.arc(x - r*0.2, y - r*0.2, r*0.5, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.fill();
+            }
+
+            const r = 26; // 基準圓半徑
+            if (number === 1) {
+                drawDot(128, 128, r * 1.8); // 巨大鮮豔紅 1 點
+            } else if (number === 2) {
+                drawDot(64, 64, r); drawDot(192, 192, r);
+            } else if (number === 3) {
+                drawDot(64, 64, r); drawDot(128, 128, r); drawDot(192, 192, r);
+            } else if (number === 4) {
+                drawDot(64, 64, r); drawDot(64, 192, r); drawDot(192, 64, r); drawDot(192, 192, r);
+            } else if (number === 5) {
+                drawDot(64, 64, r); drawDot(64, 192, r); drawDot(128, 128, r); drawDot(192, 64, r); drawDot(192, 192, r);
+            } else if (number === 6) {
+                drawDot(64, 50, r); drawDot(64, 128, r); drawDot(64, 206, r);
+                drawDot(192, 50, r); drawDot(192, 128, r); drawDot(192, 206, r);
+            }
             return new THREE.CanvasTexture(canvas);
         }
 
@@ -252,8 +274,7 @@
             const container = document.getElementById('canvas-container');
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 100);
-            
-            camera.position.set(0, 15, 11); // 視角拉高一點，碗公看得更清楚
+            camera.position.set(0, 16, 13); // 拉高視角，留出下方排骰子的空間
             camera.lookAt(0, 0, 0);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -281,10 +302,11 @@
             if (containerGroup) scene.remove(containerGroup);
             diceArray.forEach(d => scene.remove(d.mesh));
             diceArray = [];
+            extractedCount = 0;
 
             containerGroup = new THREE.Group();
 
-            if (currentMode === 'cup') {
+            if (currentMode === 'cup' || currentMode === 'extract') {
                 const cupGeo = new THREE.CylinderGeometry(4.5, 5, 7.5, 32, 1, true); 
                 const cupMat = new THREE.MeshStandardMaterial({ color: 0x111111, side: THREE.DoubleSide, roughness: 0.4 });
                 const cupBody = new THREE.Mesh(cupGeo, cupMat);
@@ -298,24 +320,21 @@
                 const bowlGeo = new THREE.SphereGeometry(6, 32, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
                 const bowlMat = new THREE.MeshStandardMaterial({ color: THEME.bowlColor, side: THREE.DoubleSide, roughness: 0.15, metalness: 0.05 });
                 const bowlMesh = new THREE.Mesh(bowlGeo, bowlMat);
-                bowlMesh.scale.set(1.2, 0.6, 1.2); 
-                bowlMesh.position.y = 3.6; 
+                bowlMesh.scale.set(1.2, 0.6, 1.2); bowlMesh.position.y = 3.6; 
                 bowlMesh.castShadow = true; bowlMesh.receiveShadow = true;
                 containerGroup.add(bowlMesh);
 
                 const rimGeo = new THREE.TorusGeometry(6, 0.25, 16, 32);
                 const rimMat = new THREE.MeshStandardMaterial({ color: THEME.bowlRimColor, roughness: 0.3, metalness: 0.05 });
                 const rimMesh = new THREE.Mesh(rimGeo, rimMat);
-                rimMesh.rotation.x = Math.PI / 2;
-                rimMesh.scale.set(1.2, 1.2, 1.2);
-                rimMesh.position.y = 3.6; 
+                rimMesh.rotation.x = Math.PI / 2; rimMesh.scale.set(1.2, 1.2, 1.2); rimMesh.position.y = 3.6; 
                 containerGroup.add(rimMesh);
-
                 containerGroup.position.y = 0;
             }
             scene.add(containerGroup);
 
-            const diceGeo = new THREE.RoundedBoxGeometry(1.4, 1.4, 1.4, 6, 0.25);
+            // 【高仿圓潤幾何】: 半徑調高至 0.35，邊緣更柔和
+            const diceGeo = new THREE.RoundedBoxGeometry(1.4, 1.4, 1.4, 6, 0.35);
             const materials = [1,2,3,4,5,6].map(i => new THREE.MeshStandardMaterial({ map: createDiceTexture(i), roughness: THEME.roughness, metalness: THEME.metalness }));
 
             for(let i = 0; i < diceCount; i++) {
@@ -323,23 +342,14 @@
                 mesh.rotation.order = 'YXZ'; 
                 
                 let angle = 0, radius = 0;
-                if (diceCount === 1) {
-                    radius = 0;
-                } else if (diceCount <= 6) {
-                    radius = 1.4;
-                    angle = (i / diceCount) * Math.PI * 2;
-                } else {
-                    if (i < 3) {
-                        radius = 0.8;
-                        angle = (i / 3) * Math.PI * 2;
-                    } else {
-                        radius = 2.2;
-                        angle = ((i - 3) / (diceCount - 3)) * Math.PI * 2;
-                    }
+                if (diceCount === 1) { radius = 0; } 
+                else if (diceCount <= 6) { radius = 1.4; angle = (i / diceCount) * Math.PI * 2; } 
+                else {
+                    if (i < 3) { radius = 0.8; angle = (i / 3) * Math.PI * 2; } 
+                    else { radius = 2.2; angle = ((i - 3) / (diceCount - 3)) * Math.PI * 2; }
                 }
 
-                let baseX = Math.cos(angle) * radius;
-                let baseZ = Math.sin(angle) * radius;
+                let baseX = Math.cos(angle) * radius; let baseZ = Math.sin(angle) * radius;
 
                 mesh.position.set(baseX, 0.75, baseZ);
                 mesh.castShadow = true;
@@ -348,12 +358,11 @@
                 diceArray.push({
                     mesh: mesh,
                     basePos: { x: baseX, z: baseZ },
-                    spinVelX: 0, spinVelY: 0, spinVelZ: 0,
-                    startRotX: 0, startRotY: 0, startRotZ: 0,
-                    targetRotX: 0, targetRotY: 0, targetRotZ: 0,
-                    startPosX: baseX, startPosY: 0.75, startPosZ: baseZ,
-                    targetPosX: baseX, targetPosY: 0.75, targetPosZ: baseZ,
-                    stopFrames: 0, stopDuration: 0, isStopped: true
+                    spinVel: new THREE.Vector3(),
+                    startRot: new THREE.Euler(), targetRot: new THREE.Euler(),
+                    startPos: new THREE.Vector3(), targetPos: new THREE.Vector3(),
+                    stopFrames: 0, stopDuration: 0, isStopped: true,
+                    isExtracted: false, faceValue: 1 // 紀錄抓取狀態與點數
                 });
             }
         }
@@ -363,14 +372,18 @@
             let acc = event.accelerationIncludingGravity;
             if (!acc || !acc.x) return;
             let delta = Math.abs(acc.x - lastX) + Math.abs(acc.y - lastY) + Math.abs(acc.z - lastZ);
-            // 只要搖晃夠大力，就會觸發切換
             if (delta > 30) toggleRoll();
             lastX = acc.x; lastY = acc.y; lastZ = acc.z;
         }
 
-        // --- 核心邏輯：控制搖骰與停止 ---
         function toggleRoll() {
             if (gameState === 'idle') {
+                // 如果已經全被抓光了，提示並重設
+                let remaining = diceArray.filter(d => !d.isExtracted).length;
+                if (remaining === 0) {
+                    if(confirm("骰子已全部取出，要重新開始嗎？")) buildGameObjects();
+                    return;
+                }
                 startRolling();
             } else if (gameState === 'rolling') {
                 stopRolling();
@@ -381,25 +394,22 @@
             initAudio(); 
             gameState = 'rolling';
             cupState = 'closed'; 
+            document.getElementById('extract-ui').style.display = 'none'; // 隱藏抓取按鈕
             document.getElementById('shake-btn').innerText = "🛑 停止";
             document.getElementById('debug-log').innerText = "瘋狂搖晃中... (請按停止)";
-            
             if(navigator.vibrate) navigator.vibrate(50); 
 
-            // 給予初始亂轉速度
             diceArray.forEach(dice => {
-                dice.spinVelX = (Math.random() - 0.5) * 1.5;
-                dice.spinVelY = (Math.random() - 0.5) * 1.5;
-                dice.spinVelZ = (Math.random() - 0.5) * 1.5;
+                if(!dice.isExtracted) {
+                    dice.spinVel.set((Math.random()-0.5)*1.5, (Math.random()-0.5)*1.5, (Math.random()-0.5)*1.5);
+                }
             });
         }
 
         function stopRolling() {
             gameState = 'stopping';
             const shakeBtn = document.getElementById('shake-btn');
-            shakeBtn.innerText = "⏳ 結算中...";
-            shakeBtn.disabled = true; // 結算期間防連點
-            
+            shakeBtn.innerText = "⏳ 結算中..."; shakeBtn.disabled = true;
             if(navigator.vibrate) navigator.vibrate([80, 50]); 
 
             const rotations = {
@@ -409,44 +419,32 @@
             };
 
             diceArray.forEach(dice => {
-                const result = Math.floor(Math.random() * 6) + 1;
-                const base = rotations[result];
-                const finalY = Math.random() * Math.PI * 2; // 最終水平朝向
+                if(!dice.isExtracted) {
+                    const result = Math.floor(Math.random() * 6) + 1;
+                    dice.faceValue = result; // 記錄點數供紅黑單雙判斷
+                    
+                    const base = rotations[result];
+                    const finalY = Math.random() * Math.PI * 2; 
 
-                dice.startRotX = dice.mesh.rotation.x;
-                dice.startRotY = dice.mesh.rotation.y;
-                dice.startRotZ = dice.mesh.rotation.z;
+                    dice.startRot.copy(dice.mesh.rotation);
+                    
+                    let signX = Math.sign(dice.spinVel.x) || 1; let signY = Math.sign(dice.spinVel.y) || 1; let signZ = Math.sign(dice.spinVel.z) || 1;
+                    let extraSpinsX = (Math.floor(Math.random() * 3) + 2) * signX;
+                    let extraSpinsY = (Math.floor(Math.random() * 3) + 2) * signY;
+                    let extraSpinsZ = (Math.floor(Math.random() * 3) + 2) * signZ;
 
-                // 根據當前旋轉方向，追加多圈旋轉，確保是「順順地轉到停」不會回抽
-                let signX = Math.sign(dice.spinVelX) || 1;
-                let signY = Math.sign(dice.spinVelY) || 1;
-                let signZ = Math.sign(dice.spinVelZ) || 1;
+                    let targetX = base.x + Math.round((dice.startRot.x - base.x)/(Math.PI*2)) * Math.PI*2;
+                    let targetY = finalY + Math.round((dice.startRot.y - finalY)/(Math.PI*2)) * Math.PI*2;
+                    let targetZ = base.z + Math.round((dice.startRot.z - base.z)/(Math.PI*2)) * Math.PI*2;
 
-                let extraSpinsX = (Math.floor(Math.random() * 3) + 2) * signX;
-                let extraSpinsY = (Math.floor(Math.random() * 3) + 2) * signY;
-                let extraSpinsZ = (Math.floor(Math.random() * 3) + 2) * signZ;
+                    dice.targetRot.set(targetX + extraSpinsX*Math.PI*2, targetY + extraSpinsY*Math.PI*2, targetZ + extraSpinsZ*Math.PI*2);
 
-                // 找出最近的同餘角度
-                let targetX = base.x + Math.round((dice.startRotX - base.x)/(Math.PI*2)) * Math.PI*2;
-                let targetY = finalY + Math.round((dice.startRotY - finalY)/(Math.PI*2)) * Math.PI*2;
-                let targetZ = base.z + Math.round((dice.startRotZ - base.z)/(Math.PI*2)) * Math.PI*2;
+                    dice.startPos.copy(dice.mesh.position);
+                    dice.targetPos.set(dice.basePos.x + (Math.random()*0.4 - 0.2), 0.75, dice.basePos.z + (Math.random()*0.4 - 0.2));
 
-                dice.targetRotX = targetX + extraSpinsX * Math.PI * 2;
-                dice.targetRotY = targetY + extraSpinsY * Math.PI * 2;
-                dice.targetRotZ = targetZ + extraSpinsZ * Math.PI * 2;
-
-                dice.startPosX = dice.mesh.position.x;
-                dice.startPosY = dice.mesh.position.y;
-                dice.startPosZ = dice.mesh.position.z;
-
-                dice.targetPosX = dice.basePos.x + (Math.random()*0.4 - 0.2);
-                dice.targetPosZ = dice.basePos.z + (Math.random()*0.4 - 0.2);
-                dice.targetPosY = 0.75;
-
-                // 【懸念系統】：每顆骰子隨機分配 60 到 150 幀的煞車時間 (約 1~2.5 秒)
-                dice.stopDuration = Math.floor(60 + Math.random() * 90);
-                dice.stopFrames = 0;
-                dice.isStopped = false;
+                    dice.stopDuration = Math.floor(60 + Math.random() * 90);
+                    dice.stopFrames = 0; dice.isStopped = false;
+                }
             });
         }
 
@@ -454,39 +452,86 @@
             if(gameState !== 'idle' || currentMode === 'bowl') return;
             cupState = (cupState === 'open') ? 'closed' : 'open';
             document.getElementById('open-btn').innerText = (cupState === 'open') ? "蓋上骰鐘" : "🚨 開牌！";
+            
+            // 紅黑單雙模式：開蓋時顯示抓取按鈕
+            if(currentMode === 'extract') {
+                document.getElementById('extract-ui').style.display = (cupState === 'open') ? 'flex' : 'none';
+            }
+        }
+
+        // --- 核心：紅黑單雙 取骰邏輯 ---
+        function extractDice(type) {
+            if(gameState !== 'idle') return;
+            let matched = 0;
+            
+            diceArray.forEach(dice => {
+                if(!dice.isExtracted) {
+                    let val = dice.faceValue;
+                    let isMatch = false;
+                    if(type === 'red' && (val === 1 || val === 4)) isMatch = true;
+                    if(type === 'black' && [2,3,5,6].includes(val)) isMatch = true;
+                    if(type === 'odd' && val % 2 !== 0) isMatch = true;
+                    if(type === 'even' && val % 2 === 0) isMatch = true;
+
+                    if(isMatch) {
+                        dice.isExtracted = true;
+                        
+                        // 計算拿出外面的位置 (靠畫面下緣排成一排)
+                        let spacing = 1.6;
+                        let startX = -((diceCount - 1) * spacing) / 2;
+                        
+                        dice.startPos.copy(dice.mesh.position);
+                        dice.targetPos.set(startX + extractedCount * spacing, 0.75, 6.5); // z=6.5 移出骰鐘範圍外
+                        
+                        // 讓它保持目前的點數，滑動過去
+                        dice.startRot.copy(dice.mesh.rotation);
+                        dice.targetRot.copy(dice.mesh.rotation);
+
+                        dice.isStopped = false; 
+                        dice.stopFrames = 0;
+                        dice.stopDuration = 30; // 快速滑出
+                        
+                        extractedCount++;
+                        matched++;
+                    }
+                }
+            });
+
+            if(matched > 0) {
+                 playClackSound();
+                 if(extractedCount === diceCount) {
+                     document.getElementById('debug-log').innerText = "全部抓完啦！可重新搖骰。";
+                 }
+            } else {
+                 alert("場上沒有符合條件的骰子喔！");
+            }
         }
 
         function animate() {
             requestAnimationFrame(animate);
 
             if (gameState === 'rolling') {
-                // 無限搖晃狀態：會一直彈跳旋轉直到按下停止
-                if (currentMode === 'cup') {
+                if (currentMode !== 'bowl') {
                     containerGroup.position.x = (Math.random() - 0.5) * 1.5;
                     containerGroup.position.z = (Math.random() - 0.5) * 1.5;
                 }
                 
                 diceArray.forEach(dice => {
-                    dice.mesh.rotation.x += dice.spinVelX;
-                    dice.mesh.rotation.y += dice.spinVelY;
-                    dice.mesh.rotation.z += dice.spinVelZ;
-                    
-                    let limit = currentMode === 'bowl' ? 1.5 : 0.5;
-                    dice.mesh.position.x = dice.basePos.x + (Math.random() - 0.5) * limit;
-                    dice.mesh.position.z = dice.basePos.z + (Math.random() - 0.5) * limit;
-                    dice.mesh.position.y = 0.75 + Math.random() * 2.5;
+                    if(!dice.isExtracted) {
+                        dice.mesh.rotation.x += dice.spinVel.x; dice.mesh.rotation.y += dice.spinVel.y; dice.mesh.rotation.z += dice.spinVel.z;
+                        let limit = currentMode === 'bowl' ? 1.5 : 0.5;
+                        dice.mesh.position.x = dice.basePos.x + (Math.random() - 0.5) * limit;
+                        dice.mesh.position.z = dice.basePos.z + (Math.random() - 0.5) * limit;
+                        dice.mesh.position.y = 0.75 + Math.random() * 2.5;
 
-                    if (Math.random() < 0.1) {
-                        playClackSound();
-                        if(navigator.vibrate) navigator.vibrate(10); 
+                        if (Math.random() < 0.1) { playClackSound(); if(navigator.vibrate) navigator.vibrate(10); }
                     }
                 });
 
-            } else if (gameState === 'stopping') {
-                // 減速結算狀態：完美平滑降落
+            } else {
                 let allStopped = true;
                 
-                if (currentMode === 'cup') {
+                if (gameState === 'stopping' && currentMode !== 'bowl') {
                     containerGroup.position.set(0, 3.75, 0); 
                 }
 
@@ -496,56 +541,46 @@
                         let t = dice.stopFrames / dice.stopDuration;
                         
                         if (t >= 1) {
-                            t = 1;
-                            dice.isStopped = true;
-                            playClackSound(); // 落定的撞擊聲
-                            if(navigator.vibrate) navigator.vibrate(20);
+                            t = 1; dice.isStopped = true;
+                            if(gameState === 'stopping') { playClackSound(); if(navigator.vibrate) navigator.vibrate(20); }
                         } else {
                             allStopped = false;
                         }
 
-                        // Cubic ease-out 公式：前段快，後段滑順緩慢
                         let ease = 1 - Math.pow(1 - t, 3);
+                        dice.mesh.rotation.x = dice.startRot.x + (dice.targetRot.x - dice.startRot.x) * ease;
+                        dice.mesh.rotation.y = dice.startRot.y + (dice.targetRot.y - dice.startRot.y) * ease;
+                        dice.mesh.rotation.z = dice.startRot.z + (dice.targetRot.z - dice.startRot.z) * ease;
 
-                        dice.mesh.rotation.x = dice.startRotX + (dice.targetRotX - dice.startRotX) * ease;
-                        dice.mesh.rotation.y = dice.startRotY + (dice.targetRotY - dice.startRotY) * ease;
-                        dice.mesh.rotation.z = dice.startRotZ + (dice.targetRotZ - dice.startRotZ) * ease;
+                        // 取出時平滑移動不彈跳，正常減速時帶彈跳
+                        let bounce = (gameState === 'stopping' && !dice.isExtracted) ? Math.abs(Math.sin(t * Math.PI * 6)) * (1 - ease) * 1.5 : 0;
+                        dice.mesh.position.x = dice.startPos.x + (dice.targetPos.x - dice.startPos.x) * ease;
+                        dice.mesh.position.z = dice.startPos.z + (dice.targetPos.z - dice.startPos.z) * ease;
+                        dice.mesh.position.y = dice.startPos.y + (dice.targetPos.y - dice.startPos.y) * ease + bounce;
 
-                        // 讓骰子落地時有一點點彈跳感
-                        let bounce = Math.abs(Math.sin(t * Math.PI * 6)) * (1 - ease) * 1.5;
-                        
-                        dice.mesh.position.x = dice.startPosX + (dice.targetPosX - dice.startPosX) * ease;
-                        dice.mesh.position.z = dice.startPosZ + (dice.targetPosZ - dice.startPosZ) * ease;
-                        dice.mesh.position.y = dice.startPosY + (dice.targetPosY - dice.startPosY) * ease + bounce;
-
-                        // 減速滑行時偶爾發出摩擦聲
-                        if (t < 0.9 && Math.random() < (1-ease)*0.1) {
-                            playClackSound();
-                        }
+                        if (gameState === 'stopping' && t < 0.9 && Math.random() < (1-ease)*0.1) playClackSound();
                     }
                 });
 
-                if (allStopped) {
+                if (gameState === 'stopping' && allStopped) {
                     gameState = 'idle';
                     let shakeBtn = document.getElementById('shake-btn');
-                    shakeBtn.innerText = "⚡ 搖骰";
-                    shakeBtn.disabled = false;
+                    shakeBtn.innerText = "⚡ 搖骰"; shakeBtn.disabled = false;
                     document.getElementById('debug-log').innerText = "已就緒";
                 }
+            }
 
-            } else if (gameState === 'idle') {
-                // 靜止狀態：處理骰鐘偷看與開蓋動畫
-                if (currentMode === 'cup') {
-                    let targetY = 3.75; let targetRotX = 0; let targetZ = 0;
-                    if (cupState === 'peeking') {
-                        targetY = 9.5; targetRotX = -0.7; targetZ = -3.5;     
-                    } else if (cupState === 'open') {
-                        targetY = 20;
-                    }
-                    containerGroup.position.y += (targetY - containerGroup.position.y) * 0.15;
-                    containerGroup.position.z += (targetZ - containerGroup.position.z) * 0.15;
-                    containerGroup.rotation.x += (targetRotX - containerGroup.rotation.x) * 0.15;
+            // 骰鐘開關動畫
+            if (gameState === 'idle' && currentMode !== 'bowl') {
+                let targetY = 3.75; let targetRotX = 0; let targetZ = 0;
+                if (cupState === 'peeking') {
+                    targetY = 9.5; targetRotX = -0.7; targetZ = -3.5;     
+                } else if (cupState === 'open') {
+                    targetY = 20;
                 }
+                containerGroup.position.y += (targetY - containerGroup.position.y) * 0.15;
+                containerGroup.position.z += (targetZ - containerGroup.position.z) * 0.15;
+                containerGroup.rotation.x += (targetRotX - containerGroup.rotation.x) * 0.15;
             }
 
             renderer.render(scene, camera);
