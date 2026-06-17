@@ -3,83 +3,180 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>🍺 吹牛數位骰鐘 (完美視角版)</title>
+    <title>🍻 派對骰子中心</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/geometries/RoundedBoxGeometry.js"></script>
     <style>
         body {
             margin: 0; padding: 0; background-color: #0d0d0d; color: #fff;
-            font-family: Arial, sans-serif; overflow: hidden; height: 100vh;
+            font-family: 'Helvetica Neue', Arial, sans-serif; overflow: hidden; height: 100vh;
             display: flex; flex-direction: column; align-items: center;
             user-select: none; -webkit-user-select: none;
         }
-        #canvas-container {
-            width: 100%; flex-grow: 1; position: relative;
-        }
+        #canvas-container { width: 100%; flex-grow: 1; position: relative; }
+        
+        /* 遊戲內 UI 層 */
         #ui-layer {
             position: absolute; bottom: 30px; width: 100%;
-            display: flex; justify-content: center; gap: 15px; z-index: 10;
+            display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; z-index: 10;
+            display: none; /* 遊戲開始前隱藏 */
         }
         button {
-            padding: 15px 25px; font-size: 1.2rem; font-weight: bold;
+            padding: 15px 25px; font-size: 1.1rem; font-weight: bold;
             border: none; border-radius: 30px; cursor: pointer;
             box-shadow: 0 4px 10px rgba(0,0,0,0.8); transition: transform 0.1s;
         }
         button:active { transform: scale(0.95); }
         .btn-peek { background: #3498db; color: white; }
         .btn-open { background: #e74c3c; color: white; }
-        .btn-shake { background: #f1c40f; color: black; display: none; }
+        .btn-shake { background: #f1c40f; color: black; }
+        .btn-menu { background: #7f8c8d; color: white; padding: 15px 20px; }
 
-        #start-screen {
+        /* 設定大廳介面 */
+        #menu-screen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); z-index: 100;
+            background: radial-gradient(circle at center, #2c3e50, #000000); z-index: 100;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
         }
-        #start-btn {
-            background: #2ecc71; color: white; padding: 20px 40px; font-size: 1.5rem;
-            border-radius: 50px; animation: pulse 1.5s infinite;
+        .menu-box {
+            background: rgba(255, 255, 255, 0.1); padding: 30px; border-radius: 15px;
+            backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);
+            text-align: center; width: 85%; max-width: 350px;
         }
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.05); box-shadow: 0 0 20px #2ecc71; }
-            100% { transform: scale(1); }
+        .menu-box h1 { margin-top: 0; color: #f1c40f; font-size: 1.8rem; }
+        .setting-group { margin: 20px 0; text-align: left; }
+        .setting-group label { display: block; margin-bottom: 8px; font-size: 1.1rem; color: #ecf0f1; }
+        select {
+            width: 100%; padding: 12px; font-size: 1.1rem; border-radius: 8px;
+            background: #34495e; color: white; border: 1px solid #7f8c8d;
         }
-        #debug-log {
-            position: absolute; top: 10px; left: 10px; color: #aaa; font-size: 12px; pointer-events: none;
-        }
+        .dice-counter { display: flex; align-items: center; justify-content: space-between; background: #34495e; border-radius: 8px; overflow: hidden; }
+        .dice-counter button { border-radius: 0; box-shadow: none; background: #2c3e50; padding: 15px; flex-grow: 1; font-size: 1.5rem; }
+        .dice-counter span { font-size: 1.5rem; font-weight: bold; width: 50px; text-align: center; }
+        #start-btn { background: #2ecc71; color: white; width: 100%; margin-top: 20px; padding: 15px; font-size: 1.3rem; }
+        
+        #debug-log { position: absolute; top: 10px; left: 10px; color: #aaa; font-size: 12px; pointer-events: none; z-index: 10; display: none; }
     </style>
 </head>
 <body>
 
-    <div id="start-screen">
-        <h2 style="color:#bbb; margin-bottom: 20px;">準備好你的酒杯</h2>
-        <button id="start-btn" onclick="initGame()">進入骰鐘 (啟用搖晃)</button>
+    <div id="menu-screen">
+        <div class="menu-box">
+            <h1>🍻 派對骰子中心</h1>
+            
+            <div class="setting-group">
+                <label>選擇遊戲容器：</label>
+                <select id="game-mode">
+                    <option value="cup">🎲 吹牛 (密閉黑骰鐘)</option>
+                    <option value="bowl">🥣 十八仔 (公開大碗公)</option>
+                </select>
+            </div>
+
+            <div class="setting-group">
+                <label>選擇骰子數量 (1~6 顆)：</label>
+                <div class="dice-counter">
+                    <button onclick="changeDice(-1)">-</button>
+                    <span id="dice-count-display">5</span>
+                    <button onclick="changeDice(1)">+</button>
+                </div>
+            </div>
+
+            <button id="start-btn" onclick="startGame()">進入遊戲</button>
+        </div>
     </div>
 
     <div id="canvas-container"></div>
     <div id="debug-log">準備就緒...</div>
 
     <div id="ui-layer">
-        <button class="btn-shake" id="shake-btn" onclick="triggerShake()">搖骰</button>
+        <button class="btn-menu" onclick="backToMenu()">🔙 更換遊戲</button>
+        <button class="btn-shake" id="shake-btn" onclick="triggerShake()">⚡ 搖骰</button>
         <button class="btn-peek" id="peek-btn">👁️ 按住偷看</button>
         <button class="btn-open" id="open-btn" onclick="toggleOpen()">🚨 開牌！</button>
     </div>
 
     <script>
-        let scene, camera, renderer, cupGroup, diceArray = [];
+        // --- 外觀與狀態設定 ---
+        const THEME = {
+            diceBg: '#1a1a1a', dotNormal: '#f1c40f', dotSpecial: '#e74c3c', metalness: 0.5, roughness: 0.25,
+            bowlColor: '#8b0000' // 大碗公的顏色 (經典深紅色)
+        };
+
+        let currentMode = 'cup'; 
+        let diceCount = 5;
+        
+        let scene, camera, renderer, containerGroup, diceArray = [];
         let isRolling = false;
         let cupState = 'closed'; 
         let rollFrames = 0;
-        const diceCount = 5;
+        let is3DInitialized = false;
 
+        // --- UI 控制邏輯 ---
+        function changeDice(delta) {
+            diceCount += delta;
+            if (diceCount < 1) diceCount = 1;
+            if (diceCount > 6) diceCount = 6;
+            document.getElementById('dice-count-display').innerText = diceCount;
+        }
+
+        function backToMenu() {
+            document.getElementById('menu-screen').style.display = 'flex';
+            document.getElementById('ui-layer').style.display = 'none';
+            document.getElementById('debug-log').style.display = 'none';
+        }
+
+        function startGame() {
+            currentMode = document.getElementById('game-mode').value;
+            document.getElementById('menu-screen').style.display = 'none';
+            document.getElementById('ui-layer').style.display = 'flex';
+            document.getElementById('debug-log').style.display = 'block';
+
+            // 依據模式顯示/隱藏對應按鈕
+            if (currentMode === 'bowl') {
+                document.getElementById('peek-btn').style.display = 'none';
+                document.getElementById('open-btn').style.display = 'none';
+            } else {
+                document.getElementById('peek-btn').style.display = 'block';
+                document.getElementById('open-btn').style.display = 'block';
+            }
+
+            // 初始化或重建 3D 場景
+            if (!is3DInitialized) {
+                init3D();
+                requestPermissions();
+                is3DInitialized = true;
+            } else {
+                buildGameObjects(); // 如果已經初始化過，只要重建骰子和容器就好
+                triggerShake();
+            }
+        }
+
+        function requestPermissions() {
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                DeviceMotionEvent.requestPermission().then(permissionState => {
+                    if (permissionState === 'granted') window.addEventListener('devicemotion', handleMotion);
+                }).catch(console.error);
+            } else {
+                window.addEventListener('devicemotion', handleMotion);
+            }
+
+            const peekBtn = document.getElementById('peek-btn');
+            const startPeek = (e) => { e.preventDefault(); if(!isRolling && currentMode === 'cup') cupState = 'peeking'; };
+            const endPeek = (e) => { e.preventDefault(); if(cupState === 'peeking') cupState = 'closed'; };
+            peekBtn.addEventListener('mousedown', startPeek);
+            peekBtn.addEventListener('touchstart', startPeek);
+            window.addEventListener('mouseup', endPeek);
+            window.addEventListener('touchend', endPeek);
+        }
+
+        // --- 3D 繪圖邏輯 ---
         function createDiceTexture(number) {
             const canvas = document.createElement('canvas');
             canvas.width = 256; canvas.height = 256;
             const ctx = canvas.getContext('2d');
+            ctx.fillStyle = THEME.diceBg; ctx.fillRect(0, 0, 256, 256);
+            ctx.fillStyle = (number === 1 || number === 4) ? THEME.dotSpecial : THEME.dotNormal;
             
-            ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 256, 256);
-            ctx.lineWidth = 8; ctx.strokeStyle = '#bdc3c7'; ctx.strokeRect(4, 4, 248, 248);
-
-            ctx.fillStyle = (number === 1 || number === 4) ? '#c0392b' : '#2c3e50';
             const dots = {
                 1: [[128, 128, 30]],
                 2: [[64, 64, 20], [192, 192, 20]],
@@ -88,19 +185,15 @@
                 5: [[64, 64, 20], [64, 192, 20], [128, 128, 20], [192, 64, 20], [192, 192, 20]],
                 6: [[64, 64, 20], [64, 128, 20], [64, 192, 20], [192, 64, 20], [192, 128, 20], [192, 192, 20]]
             };
-
-            dots[number].forEach(d => {
-                ctx.beginPath(); ctx.arc(d[0], d[1], d[2], 0, Math.PI * 2); ctx.fill();
-            });
+            dots[number].forEach(d => { ctx.beginPath(); ctx.arc(d[0], d[1], d[2], 0, Math.PI * 2); ctx.fill(); });
             return new THREE.CanvasTexture(canvas);
         }
 
         function init3D() {
             const container = document.getElementById('canvas-container');
             scene = new THREE.Scene();
-            
             camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 100);
-            camera.position.set(0, 12, 14); // 視角拉高一點，視野更好
+            camera.position.set(0, 13, 14); 
             camera.lookAt(0, 0, 0);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -108,104 +201,88 @@
             renderer.shadowMap.enabled = true;
             container.appendChild(renderer.domElement);
 
-            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-            const spotLight = new THREE.SpotLight(0xffffff, 0.8);
-            spotLight.position.set(0, 20, 10);
-            spotLight.castShadow = true;
+            scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+            const spotLight = new THREE.SpotLight(0xffffff, 1.0); 
+            spotLight.position.set(5, 25, 10); spotLight.castShadow = true;
             scene.add(spotLight);
 
             const floor = new THREE.Mesh(
                 new THREE.PlaneGeometry(50, 50),
-                new THREE.MeshStandardMaterial({ color: 0x5e1010, roughness: 0.8 })
+                new THREE.MeshStandardMaterial({ color: 0x2c1b18, roughness: 0.9 })
             );
-            floor.rotation.x = -Math.PI / 2;
-            floor.receiveShadow = true;
+            floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true;
             scene.add(floor);
 
-            cupGroup = new THREE.Group();
-            const cupGeo = new THREE.CylinderGeometry(4.5, 5, 7.5, 32, 1, true); // 骰鐘改淺一點
-            const cupMat = new THREE.MeshStandardMaterial({ color: 0x111111, side: THREE.DoubleSide, roughness: 0.4 });
-            const cupBody = new THREE.Mesh(cupGeo, cupMat);
-            
-            const capGeo = new THREE.CircleGeometry(4.5, 32);
-            const capMesh = new THREE.Mesh(capGeo, cupMat);
-            capMesh.rotation.x = -Math.PI / 2;
-            capMesh.position.y = 3.75;
-            
-            cupBody.castShadow = true;
-            cupGroup.add(cupBody);
-            cupGroup.add(capMesh);
-            cupGroup.position.y = 3.75;
-            scene.add(cupGroup);
+            buildGameObjects();
+            animate();
+            triggerShake();
+        }
 
-            const diceGeo = new THREE.BoxGeometry(1.5, 1.5, 1.5);
-            const materials = [
-                new THREE.MeshStandardMaterial({ map: createDiceTexture(1), roughness: 0.2 }), 
-                new THREE.MeshStandardMaterial({ map: createDiceTexture(2), roughness: 0.2 }), 
-                new THREE.MeshStandardMaterial({ map: createDiceTexture(3), roughness: 0.2 }), 
-                new THREE.MeshStandardMaterial({ map: createDiceTexture(4), roughness: 0.2 }), 
-                new THREE.MeshStandardMaterial({ map: createDiceTexture(5), roughness: 0.2 }), 
-                new THREE.MeshStandardMaterial({ map: createDiceTexture(6), roughness: 0.2 })  
-            ];
+        // 根據選擇動態生成容器與骰子
+        function buildGameObjects() {
+            // 清除舊的物件
+            if (containerGroup) scene.remove(containerGroup);
+            diceArray.forEach(d => scene.remove(d.mesh));
+            diceArray = [];
 
-            // 把骰子集中的範圍縮小 (由 1.8 縮小為 1.4)，確保都在正中間
-            const basePositions = [
-                {x: -1.4, z: -1.4}, {x: 1.4, z: -1.4}, {x: 0, z: 0},
-                {x: -1.4, z: 1.4}, {x: 1.4, z: 1.4}
-            ];
+            containerGroup = new THREE.Group();
 
-            for(let i=0; i<diceCount; i++) {
+            if (currentMode === 'cup') {
+                // 建立黑骰鐘
+                const cupGeo = new THREE.CylinderGeometry(4.5, 5, 7.5, 32, 1, true); 
+                const cupMat = new THREE.MeshStandardMaterial({ color: 0x111111, side: THREE.DoubleSide, roughness: 0.4 });
+                const cupBody = new THREE.Mesh(cupGeo, cupMat);
+                const capGeo = new THREE.CircleGeometry(4.5, 32);
+                const capMesh = new THREE.Mesh(capGeo, cupMat);
+                capMesh.rotation.x = -Math.PI / 2; capMesh.position.y = 3.75;
+                cupBody.castShadow = true;
+                containerGroup.add(cupBody); containerGroup.add(capMesh);
+                containerGroup.position.y = 3.75;
+            } else if (currentMode === 'bowl') {
+                // 建立大碗公 (半球體)
+                const bowlGeo = new THREE.SphereGeometry(6, 32, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
+                const bowlMat = new THREE.MeshStandardMaterial({ color: THEME.bowlColor, side: THREE.DoubleSide, roughness: 0.3, metalness: 0.1 });
+                const bowlMesh = new THREE.Mesh(bowlGeo, bowlMat);
+                bowlMesh.position.y = 5.5; // 調整碗公深度與地面的相對位置
+                bowlMesh.castShadow = true; bowlMesh.receiveShadow = true;
+                containerGroup.add(bowlMesh);
+                containerGroup.position.y = 0;
+            }
+            scene.add(containerGroup);
+
+            // 建立圓角骰子
+            const diceGeo = new THREE.RoundedBoxGeometry(1.5, 1.5, 1.5, 6, 0.25);
+            const materials = [1,2,3,4,5,6].map(i => new THREE.MeshStandardMaterial({ map: createDiceTexture(i), roughness: THEME.roughness, metalness: THEME.metalness }));
+
+            // 動態計算骰子排列的圓形座標 (確保不重疊)
+            for(let i = 0; i < diceCount; i++) {
                 const mesh = new THREE.Mesh(diceGeo, materials);
-                mesh.position.set(basePositions[i].x, 0.75, basePositions[i].z);
+                mesh.rotation.order = 'YXZ'; 
+                
+                // 用數學算出環狀分布
+                let angle = (i / diceCount) * Math.PI * 2;
+                let radius = diceCount > 1 ? 1.4 : 0;
+                let baseX = Math.cos(angle) * radius;
+                let baseZ = Math.sin(angle) * radius;
+
+                mesh.position.set(baseX, 0.75, baseZ);
                 mesh.castShadow = true;
                 scene.add(mesh);
                 diceArray.push({
                     mesh: mesh,
-                    basePos: basePositions[i],
-                    targetRot: new THREE.Euler()
+                    basePos: { x: baseX, z: baseZ },
+                    targetRot: new THREE.Euler(0, 0, 0, 'YXZ') 
                 });
             }
-
-            animate();
-            triggerShake(); 
         }
 
-        function initGame() {
-            document.getElementById('start-screen').style.display = 'none';
-            init3D();
-
-            if (typeof DeviceMotionEvent.requestPermission === 'function') {
-                DeviceMotionEvent.requestPermission().then(permissionState => {
-                    if (permissionState === 'granted') {
-                        window.addEventListener('devicemotion', handleMotion);
-                    } else {
-                        document.getElementById('shake-btn').style.display = 'block'; 
-                    }
-                }).catch(console.error);
-            } else {
-                window.addEventListener('devicemotion', handleMotion);
-                document.getElementById('shake-btn').style.display = 'block';
-            }
-
-            const peekBtn = document.getElementById('peek-btn');
-            const startPeek = (e) => { e.preventDefault(); if(!isRolling) cupState = 'peeking'; };
-            const endPeek = (e) => { e.preventDefault(); if(cupState === 'peeking') cupState = 'closed'; };
-            
-            peekBtn.addEventListener('mousedown', startPeek);
-            peekBtn.addEventListener('touchstart', startPeek);
-            window.addEventListener('mouseup', endPeek);
-            window.addEventListener('touchend', endPeek);
-        }
-
+        // --- 搖晃與動畫邏輯 ---
         let lastX = 0, lastY = 0, lastZ = 0;
         function handleMotion(event) {
             let acc = event.accelerationIncludingGravity;
             if (!acc || !acc.x) return;
             let delta = Math.abs(acc.x - lastX) + Math.abs(acc.y - lastY) + Math.abs(acc.z - lastZ);
-            
-            if (delta > 25 && !isRolling) { 
-                triggerShake();
-            }
+            if (delta > 25 && !isRolling) triggerShake();
             lastX = acc.x; lastY = acc.y; lastZ = acc.z;
         }
 
@@ -219,27 +296,22 @@
             document.getElementById('debug-log').innerText = "搖晃中...";
 
             const rotations = {
-                1: {x: 0, y: 0, z: Math.PI/2},   
-                2: {x: 0, y: 0, z: -Math.PI/2},  
-                3: {x: 0, y: 0, z: 0},           
-                4: {x: Math.PI, y: 0, z: 0},     
-                5: {x: -Math.PI/2, y: 0, z: 0},  
-                6: {x: Math.PI/2, y: 0, z: 0}    
+                1: {x: 0, y: 0, z: Math.PI/2},   2: {x: 0, y: 0, z: -Math.PI/2},  
+                3: {x: 0, y: 0, z: 0},           4: {x: Math.PI, y: 0, z: 0},     
+                5: {x: -Math.PI/2, y: 0, z: 0},  6: {x: Math.PI/2, y: 0, z: 0}    
             };
 
             diceArray.forEach(dice => {
                 const result = Math.floor(Math.random() * 6) + 1;
-                const baseRot = rotations[result];
                 const randomY = Math.random() * Math.PI * 2;
-                dice.targetRot.set(baseRot.x, randomY, baseRot.z);
+                dice.targetRot.set(rotations[result].x, randomY, rotations[result].z, 'YXZ');
             });
         }
 
         function toggleOpen() {
-            if(isRolling) return;
+            if(isRolling || currentMode === 'bowl') return;
             cupState = (cupState === 'open') ? 'closed' : 'open';
-            const openBtn = document.getElementById('open-btn');
-            openBtn.innerText = (cupState === 'open') ? "蓋上骰鐘" : "🚨 開牌！";
+            document.getElementById('open-btn').innerText = (cupState === 'open') ? "蓋上骰鐘" : "🚨 開牌！";
         }
 
         function animate() {
@@ -247,48 +319,48 @@
 
             if (isRolling) {
                 rollFrames--;
-                cupGroup.position.x = (Math.random() - 0.5) * 1.5;
-                cupGroup.position.z = (Math.random() - 0.5) * 1.5;
+                // 容器震動
+                if (currentMode === 'cup') {
+                    containerGroup.position.x = (Math.random() - 0.5) * 1.5;
+                    containerGroup.position.z = (Math.random() - 0.5) * 1.5;
+                }
                 
                 diceArray.forEach(dice => {
                     dice.mesh.rotation.x += Math.random();
                     dice.mesh.rotation.y += Math.random();
-                    dice.mesh.position.x = dice.basePos.x + (Math.random() - 0.5);
-                    dice.mesh.position.z = dice.basePos.z + (Math.random() - 0.5);
+                    // 在限制範圍內亂飛
+                    let limit = currentMode === 'bowl' ? 1.5 : 0.5;
+                    dice.mesh.position.x = dice.basePos.x + (Math.random() - 0.5) * limit;
+                    dice.mesh.position.z = dice.basePos.z + (Math.random() - 0.5) * limit;
+                    // 如果是大碗公模式，搖晃時骰子可以飛高一點
+                    if(currentMode === 'bowl') dice.mesh.position.y = 0.75 + Math.random() * 2;
                 });
 
                 if (rollFrames <= 0) {
                     isRolling = false;
-                    cupGroup.position.set(0, 3.75, 0); 
+                    if (currentMode === 'cup') containerGroup.position.set(0, 3.75, 0); 
                     
                     diceArray.forEach(dice => {
                         dice.mesh.rotation.copy(dice.targetRot);
-                        // 稍微減少落地的隨機位移，讓骰子不會跑到太邊緣
                         dice.mesh.position.set(
                             dice.basePos.x + (Math.random()*0.3 - 0.15),
                             0.75, 
                             dice.basePos.z + (Math.random()*0.3 - 0.15)
                         );
                     });
-                    document.getElementById('debug-log').innerText = "已就緒，請喊注";
+                    document.getElementById('debug-log').innerText = "已就緒";
                 }
-            } else {
-                let targetY = 3.75;
-                let targetRotX = 0;
-                let targetZ = 0;
-
+            } else if (currentMode === 'cup') {
+                // 只有骰鐘模式需要處理掀蓋動畫
+                let targetY = 3.75; let targetRotX = 0; let targetZ = 0;
                 if (cupState === 'peeking') {
-                    // 【關鍵修正】把骰鐘抬得更高、往後退更多、仰角更大！
-                    targetY = 9.5;      // 高度拉高 (原本 6.5)
-                    targetRotX = -0.7;  // 往後仰角加大 (原本 -0.3)
-                    targetZ = -3.5;     // 整體往後退 (原本 -1.5)
+                    targetY = 9.5; targetRotX = -0.7; targetZ = -3.5;     
                 } else if (cupState === 'open') {
                     targetY = 20;
                 }
-
-                cupGroup.position.y += (targetY - cupGroup.position.y) * 0.15;
-                cupGroup.position.z += (targetZ - cupGroup.position.z) * 0.15;
-                cupGroup.rotation.x += (targetRotX - cupGroup.rotation.x) * 0.15;
+                containerGroup.position.y += (targetY - containerGroup.position.y) * 0.15;
+                containerGroup.position.z += (targetZ - containerGroup.position.z) * 0.15;
+                containerGroup.rotation.x += (targetRotX - containerGroup.rotation.x) * 0.15;
             }
 
             renderer.render(scene, camera);
