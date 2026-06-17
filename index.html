@@ -453,3 +453,158 @@
                     let targetZ = base.z + Math.round((dice.startRot.z - base.z)/(Math.PI*2)) * Math.PI*2;
 
                     dice.targetRot.set(targetX + extraSpinsX*Math.PI*2, targetY + extraSpinsY*Math.PI*2, targetZ + extraSpinsZ*Math.PI*2);
+
+                    dice.startPos.copy(dice.mesh.position);
+                    dice.targetPos.set(dice.basePos.x + (Math.random()*0.4 - 0.2), 0.75, dice.basePos.z + (Math.random()*0.4 - 0.2));
+
+                    dice.stopDuration = Math.floor(60 + Math.random() * 90);
+                    dice.stopFrames = 0; dice.isStopped = false;
+                }
+            });
+        }
+
+        function toggleOpen() {
+            if(gameState !== 'idle' || currentMode === 'bowl') return;
+            cupState = (cupState === 'open') ? 'closed' : 'open';
+            document.getElementById('open-btn').innerText = (cupState === 'open') ? "蓋上骰鐘" : "🚨 開牌！";
+            
+            if(currentMode === 'extract') {
+                // 觸發時改為 CSS grid，確保按鈕絕對等寬
+                document.getElementById('extract-ui').style.display = (cupState === 'open') ? 'grid' : 'none';
+            }
+        }
+
+        function extractDice(type) {
+            if(gameState !== 'idle') return;
+            let matched = 0;
+            
+            diceArray.forEach(dice => {
+                if(!dice.isExtracted) {
+                    let val = dice.faceValue;
+                    let isMatch = false;
+                    if(type === 'red' && (val === 1 || val === 4)) isMatch = true;
+                    if(type === 'black' && [2,3,5,6].includes(val)) isMatch = true;
+                    if(type === 'odd' && val % 2 !== 0) isMatch = true;
+                    if(type === 'even' && val % 2 === 0) isMatch = true;
+                    if(type === 'small' && val <= 3) isMatch = true;
+                    if(type === 'big' && val >= 4) isMatch = true;
+
+                    if(isMatch) {
+                        dice.isExtracted = true;
+                        
+                        let spacing = 1.6;
+                        let startX = -((diceCount - 1) * spacing) / 2;
+                        
+                        dice.startPos.copy(dice.mesh.position);
+                        dice.targetPos.set(startX + extractedCount * spacing, 0.75, 5.5); 
+                        
+                        dice.startRot.copy(dice.mesh.rotation);
+                        dice.targetRot.copy(dice.mesh.rotation);
+
+                        dice.isStopped = false; 
+                        dice.stopFrames = 0;
+                        dice.stopDuration = 30; 
+                        
+                        extractedCount++;
+                        matched++;
+                    }
+                }
+            });
+
+            if(matched > 0) {
+                 playClackSound();
+                 if(extractedCount === diceCount) {
+                     document.getElementById('debug-log').innerText = "全部抓完啦！可重新搖骰。";
+                 }
+            } else {
+                 alert("場上沒有符合條件的骰子喔！");
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (gameState === 'rolling') {
+                if (currentMode !== 'bowl') {
+                    containerGroup.position.x = (Math.random() - 0.5) * 1.5;
+                    containerGroup.position.z = (Math.random() - 0.5) * 1.5;
+                }
+                
+                diceArray.forEach(dice => {
+                    if(!dice.isExtracted) {
+                        dice.mesh.rotation.x += dice.spinVel.x; dice.mesh.rotation.y += dice.spinVel.y; dice.mesh.rotation.z += dice.spinVel.z;
+                        let limit = currentMode === 'bowl' ? 1.5 : 0.5;
+                        dice.mesh.position.x = dice.basePos.x + (Math.random() - 0.5) * limit;
+                        dice.mesh.position.z = dice.basePos.z + (Math.random() - 0.5) * limit;
+                        dice.mesh.position.y = 0.75 + Math.random() * 2.5;
+
+                        if (Math.random() < 0.1) { playClackSound(); if(navigator.vibrate) navigator.vibrate(10); }
+                    }
+                });
+
+            } else {
+                let allStopped = true;
+                
+                if (gameState === 'stopping' && currentMode !== 'bowl') {
+                    containerGroup.position.set(0, 3.75, 0); 
+                }
+
+                diceArray.forEach(dice => {
+                    if (!dice.isStopped) {
+                        dice.stopFrames++;
+                        let t = dice.stopFrames / dice.stopDuration;
+                        
+                        if (t >= 1) {
+                            t = 1; dice.isStopped = true;
+                            if(gameState === 'stopping') { playClackSound(); if(navigator.vibrate) navigator.vibrate(20); }
+                        } else {
+                            allStopped = false;
+                        }
+
+                        let ease = 1 - Math.pow(1 - t, 3);
+                        dice.mesh.rotation.x = dice.startRot.x + (dice.targetRot.x - dice.startRot.x) * ease;
+                        dice.mesh.rotation.y = dice.startRot.y + (dice.targetRot.y - dice.startRot.y) * ease;
+                        dice.mesh.rotation.z = dice.startRot.z + (dice.targetRot.z - dice.startRot.z) * ease;
+
+                        let bounce = (gameState === 'stopping' && !dice.isExtracted) ? Math.abs(Math.sin(t * Math.PI * 6)) * (1 - ease) * 1.5 : 0;
+                        dice.mesh.position.x = dice.startPos.x + (dice.targetPos.x - dice.startPos.x) * ease;
+                        dice.mesh.position.z = dice.startPos.z + (dice.targetPos.z - dice.startPos.z) * ease;
+                        dice.mesh.position.y = dice.startPos.y + (dice.targetPos.y - dice.startPos.y) * ease + bounce;
+
+                        if (gameState === 'stopping' && t < 0.9 && Math.random() < (1-ease)*0.1) playClackSound();
+                    }
+                });
+
+                if (gameState === 'stopping' && allStopped) {
+                    gameState = 'idle';
+                    let shakeBtn = document.getElementById('shake-btn');
+                    shakeBtn.innerText = "⚡ 搖骰"; shakeBtn.disabled = false;
+                    document.getElementById('debug-log').innerText = "已就緒";
+                }
+            }
+
+            if (gameState === 'idle' && currentMode !== 'bowl') {
+                let targetY = 3.75; let targetRotX = 0; let targetZ = 0;
+                if (cupState === 'peeking') {
+                    targetY = 9.5; targetRotX = -0.7; targetZ = -3.5;     
+                } else if (cupState === 'open') {
+                    targetY = 20;
+                }
+                containerGroup.position.y += (targetY - containerGroup.position.y) * 0.15;
+                containerGroup.position.z += (targetZ - containerGroup.position.z) * 0.15;
+                containerGroup.rotation.x += (targetRotX - containerGroup.rotation.x) * 0.15;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            if(!camera) return;
+            const container = document.getElementById('canvas-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+    </script>
+</body>
+</html>
