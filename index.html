@@ -3,290 +3,279 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>線上吹牛骰子遊戲 🎲</title>
+    <title>🍺 隨身 3D 骰鐘</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
-        :root {
-            --primary-color: #2c3e50;
-            --accent-color: #e74c3c;
-            --bg-color: #ecf0f1;
-        }
-
         body {
-            font-family: 'Helvetica Neue', Arial, sans-serif;
-            background-color: var(--bg-color);
             margin: 0;
-            padding: 20px;
+            padding: 0;
+            background-color: #1a1a1a;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
             display: flex;
             flex-direction: column;
             align-items: center;
+            justify-content: space-between;
+            height: 100vh;
+            user-select: none;
+            -webkit-user-select: none;
         }
 
-        h1 {
-            color: var(--primary-color);
-            margin-bottom: 10px;
-        }
-
-        .game-container {
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            width: 100%;
-            max-width: 600px;
-            text-align: center;
-        }
-
-        .status-board {
-            font-size: 1.2rem;
-            font-weight: bold;
-            margin-bottom: 20px;
-            padding: 10px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            color: var(--primary-color);
-        }
-
-        .player-area {
-            border: 2px dashed #bdc3c7;
-            border-radius: 8px;
-            padding: 15px;
-            margin: 15px 0;
-            background: #fafafa;
-        }
-
-        .player-area.active {
-            border-color: var(--accent-color);
-            background: #fff5f5;
-        }
-
-        .dice-container {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            margin-top: 10px;
-            min-height: 60px;
-        }
-
-        .dice {
-            width: 50px;
-            height: 50px;
-            background: white;
-            border: 2px solid #333;
-            border-radius: 8px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 1.8rem;
-            font-weight: bold;
-            box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
-        }
-
-        .dice.hidden {
-            background: #7f8c8d;
-            color: #7f8c8d;
-            border-color: #7f8c8d;
-        }
-
-        .controls {
+        #ui-top {
             margin-top: 20px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            letter-spacing: 2px;
+            color: #f1c40f;
+            text-shadow: 0 0 10px rgba(241,196,15,0.5);
+        }
+
+        #canvas-container {
+            width: 100%;
+            flex-grow: 1;
+            position: relative;
+        }
+
+        #ui-bottom {
+            margin-bottom: 40px;
             display: flex;
-            justify-content: center;
-            gap: 10px;
-            flex-wrap: wrap;
+            gap: 20px;
+            z-index: 10;
         }
 
         button {
-            background-color: var(--primary-color);
-            color: white;
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            font-weight: bold;
             border: none;
-            padding: 10px 20px;
-            font-size: 1rem;
-            border-radius: 5px;
+            border-radius: 50px;
             cursor: pointer;
-            transition: background 0.2s;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            transition: transform 0.1s, background-color 0.2s;
         }
 
-        button:hover {
-            background-color: #34495e;
+        button:active {
+            transform: scale(0.95);
         }
 
-        button.action-btn {
-            background-color: var(--accent-color);
+        .btn-shake {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
         }
 
-        button.action-btn:hover {
-            background-color: #c0392b;
+        .btn-peek {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
         }
 
-        button:disabled {
-            background-color: #bdc3c7;
-            cursor: not-allowed;
+        /* 骰鐘蓋住時的遮罩效果 */
+        #cup-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 260px;
+            height: 260px;
+            background: radial-gradient(circle, #34495e 30%, #2c3e50 80%);
+            border: 8px solid #1a252f;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 5rem;
+            box-shadow: inset 0 0 30px rgba(0,0,0,0.8), 0 10px 20px rgba(0,0,0,0.6);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: none;
         }
 
-        .log {
-            margin-top: 20px;
-            text-align: left;
-            max-height: 150px;
-            overflow-y: auto;
-            background: #2c3e50;
-            color: #ecf0f1;
-            padding: 10px;
-            border-radius: 6px;
-            font-family: monospace;
+        #cup-overlay.lifted {
+            transform: translate(-50%, -150%) scale(0.8);
+            opacity: 0;
         }
     </style>
 </head>
 <body>
 
-    <h1>🎲 吹牛骰子派對</h1>
-    
-    <div class="game-container">
-        <div class="status-board" id="status">點擊「開始遊戲」來搖骰子！</div>
+    <div id="ui-top">🎲 乾杯骰鐘</div>
 
-        <div class="player-area" id="p1-area">
-            <h3>玩家 1 (你)</h3>
-            <div class="dice-container" id="p1-dice"></div>
-        </div>
+    <div id="canvas-container">
+        <div id="cup-overlay">🎲</div>
+    </div>
 
-        <div class="player-area" id="p2-area">
-            <h3>玩家 2 (對手)</h3>
-            <div class="dice-container" id="p2-dice"></div>
-        </div>
-
-        <div class="controls">
-            <button id="start-btn" onclick="initGame()">開始遊戲 / 重來</button>
-            <button id="peek-btn" onclick="togglePeek()" disabled>看我的骰子</button>
-            <button id="call-btn" class="action-btn" onclick="nextTurn()" disabled>喊注 / 換下一人</button>
-            <button id="liar-btn" class="action-btn" onclick="challenge()" disabled>抓鬼 (抓吹牛)！</button>
-        </div>
-
-        <div class="log" id="game-log">
-            <div>遊戲紀錄將顯示在這裡...</div>
-        </div>
+    <div id="ui-bottom">
+        <button class="btn-shake" onclick="shakeCup()">⚡ 搖骰子</button>
+        <button class="btn-peek" onmousedown="peek(true)" onmouseup="peek(false)" ontouchstart="peek(true)" ontouchend="peek(false)">👁️ 按住看牌</button>
     </div>
 
     <script>
-        // 遊戲狀態管理
-        let game = {
-            p1Dice: [],
-            p2Dice: [],
-            isP1Turn: true,
-            isGameActive: false,
-            isPeeking: false
-        };
+        let scene, camera, renderer, diceArray = [];
+        const diceCount = 5; // 預設 5 顆骰子
+        const container = document.getElementById('canvas-container');
+        const cupOverlay = document.getElementById('cup-overlay');
 
-        const statusEl = document.getElementById('status');
-        const logEl = document.getElementById('game-log');
-
-        // 隨機生成 5 顆骰子
-        function rollDice() {
-            return Array.from({ length: 5 }, () => Math.floor(Math.random() * 6) + 1);
-        }
-
-        // 初始化遊戲
-        function initGame() {
-            game.p1Dice = rollDice();
-            game.p2Dice = rollDice();
-            game.isP1Turn = true;
-            game.isGameActive = true;
-            game.isPeeking = false;
-
-            // 啟用/禁用按鈕
-            document.getElementById('peek-btn').disabled = false;
-            document.getElementById('call-btn').disabled = false;
-            document.getElementById('liar-btn').disabled = false;
+        // 創建 1~6 點的畫布貼圖 (用程式碼直接畫出點數，不用外部圖檔)
+        function createDiceTexture(number) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
             
-            logMessage("🆕 遊戲開始！雙方骰子已蓋上。");
-            updateUI();
+            // 底色
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, 128, 128);
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = '#bdc3c7';
+            ctx.strokeRect(2, 2, 124, 124);
+
+            // 畫點數
+            ctx.fillStyle = (number === 1 || number === 4) ? '#e74c3c' : '#2c3e50'; // 1,4點用紅色，其餘深藍
+            const dots = {
+                1: [[64, 64, 18]],
+                2: [[32, 32, 10], [96, 96, 10]],
+                3: [[32, 32, 10], [64, 64, 10], [96, 96, 10]],
+                4: [[32, 32, 10], [32, 96, 10], [96, 32, 10], [96, 96, 10]],
+                5: [[32, 32, 10], [32, 96, 10], [64, 64, 10], [96, 32, 10], [96, 96, 10]],
+                6: [[32, 32, 10], [32, 64, 10], [32, 96, 10], [96, 32, 10], [96, 64, 10], [96, 96, 10]]
+            };
+
+            dots[number].forEach(d => {
+                ctx.beginPath();
+                ctx.arc(d[0], d[1], d[2], 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            return new THREE.CanvasTexture(canvas);
         }
 
-        // 更新畫面
-        function updateUI() {
-            if (!game.isGameActive) return;
+        // 初始化 3D 場景
+        function init() {
+            scene = new THREE.Scene();
+            
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(0, 10, 0); // 從正上方往下看
+            camera.lookAt(0, 0, 0);
 
-            // 更新當前輪到誰
-            if (game.isP1Turn) {
-                statusEl.innerText = "輪到【玩家 1】行動（請喊注或抓鬼）";
-                document.getElementById('p1-area').classList.add('active');
-                document.getElementById('p2-area').classList.remove('active');
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.shadowMap.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            // 光源
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+            dirLight.position.set(5, 15, 5);
+            scene.add(dirLight);
+
+            // 產生 1~6 面的材質
+            const materials = [];
+            // Three.js 的方塊六面順序：右、左、上、下、前、後
+            // 這裡對應設定：右1、左2、上3、下4、前5、後6
+            for (let i = 1; i <= 6; i++) {
+                materials.push(new THREE.MeshStandardMaterial({ map: createDiceTexture(i), roughness: 0.3 }));
+            }
+
+            // 建立 5 顆骰子
+            const geometry = new THREE.BoxGeometry(1, 1, 1);
+            
+            // 骰子在圓盤內的固定排布位置 (防止重疊)
+            const positions = [
+                {x: -1.2, z: -1.2}, {x: 1.2, z: -1.2},
+                {x: 0, z: 0},
+                {x: -1.2, z: 1.2}, {x: 1.2, z: 1.2}
+            ];
+
+            for (let i = 0; i < diceCount; i++) {
+                const dice = new THREE.Mesh(geometry, materials);
+                dice.position.set(positions[i].x, 0, positions[i].z);
+                scene.add(dice);
+                diceArray.push({
+                    mesh: dice,
+                    targetRotation: new THREE.Euler(),
+                    isRolling: false,
+                    rollSpeed: 0
+                });
+            }
+
+            animate();
+            shakeCup(); // 一進網頁自動搖一次
+        }
+
+        // 搖骰子邏輯（模擬生動的滾動與亂數點數）
+        function shakeCup() {
+            cupOverlay.classList.remove('lifted'); // 搖骰時強制蓋上骰鐘
+            
+            // 定義 6 個點數朝上時，Three.js 骰子對應的旋轉角度 (弧度)
+            const rotations = {
+                1: {x: 0, y: 0, z: -Math.PI/2}, // 右面朝上
+                2: {x: 0, y: 0, z: Math.PI/2},  // 左面朝上
+                3: {x: 0, y: 0, z: 0},          // 上面朝上
+                4: {x: Math.PI, y: 0, z: 0},    // 下面朝上
+                5: {x: -Math.PI/2, y: 0, z: 0}, // 前面朝上
+                6: {x: Math.PI/2, y: 0, z: 0}  // 後面朝上
+            };
+
+            diceArray.forEach(dice => {
+                dice.isRolling = true;
+                dice.rollSpeed = 0.3 + Math.random() * 0.2;
+                
+                // 亂數決定最終點數 (1~6)
+                const finalResult = Math.floor(Math.random() * 6) + 1;
+                const baseRot = rotations[finalResult];
+
+                // 加上隨機的 360 度倍數，讓旋轉動畫看起來更瘋狂、更生動
+                dice.targetRotation.x = baseRot.x + (Math.floor(Math.random() * 4) + 3) * Math.PI * 2;
+                dice.targetRotation.y = baseRot.y + (Math.floor(Math.random() * 4) + 3) * Math.PI * 2;
+                dice.targetRotation.z = baseRot.z + (Math.floor(Math.random() * 4) + 3) * Math.PI * 2;
+            });
+
+            // 手機微震動回饋 (如果裝置支援)
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+        }
+
+        // 看牌按鈕控制
+        function peek(isPeeking) {
+            if (isPeeking) {
+                cupOverlay.classList.add('lifted'); // 移開骰鐘
             } else {
-                statusEl.innerText = "輪到【玩家 2】行動（請喊注或抓鬼）";
-                document.getElementById('p2-area').classList.add('active');
-                document.getElementById('p1-area').classList.remove('active');
+                cupOverlay.classList.remove('lifted'); // 蓋回骰鐘
             }
-
-            // 渲染玩家 1 的骰子 (根據 Peek 狀態決定是否隱藏)
-            const p1Container = document.getElementById('p1-dice');
-            p1Container.innerHTML = game.p1Dice.map(val => 
-                `<div class="dice ${game.isPeeking ? '' : 'hidden'}">${val}</div>`
-            ).join('');
-
-            // 渲染玩家 2 的骰子 (單機版預設永遠隱藏，直到開牌)
-            const p2Container = document.getElementById('p2-dice');
-            p2Container.innerHTML = game.p2Dice.map(() => 
-                `<div class="dice hidden">?</div>`
-            ).join('');
         }
 
-        // 看牌/遮牌切換
-        function togglePeek() {
-            game.isPeeking = !game.isPeeking;
-            const peekBtn = document.getElementById('peek-btn');
-            peekBtn.innerText = game.isPeeking ? "遮住我的骰子" : "看我的骰子";
-            updateUI();
+        // 每幀動畫渲染
+        function animate() {
+            requestAnimationFrame(animate);
+
+            diceArray.forEach(dice => {
+                if (dice.isRolling) {
+                    // 使用平滑插值 (Lerp) 讓骰子旋轉慢慢減速，最後精準停在目標點數
+                    dice.mesh.rotation.x += (dice.targetRotation.x - dice.mesh.rotation.x) * dice.rollSpeed;
+                    dice.mesh.rotation.y += (dice.targetRotation.y - dice.mesh.rotation.y) * dice.rollSpeed;
+                    dice.mesh.rotation.z += (dice.targetRotation.z - dice.mesh.rotation.z) * dice.rollSpeed;
+
+                    // 接近目標角度時停止旋轉
+                    if (Math.abs(dice.targetRotation.x - dice.mesh.rotation.x) < 0.01) {
+                        dice.mesh.rotation.copy(dice.targetRotation);
+                        dice.isRolling = false;
+                    }
+                } else {
+                    // 沒在搖的時候，骰子在原地微微無規則晃動，看起來更逼真
+                    dice.mesh.rotation.y += 0.005;
+                }
+            });
+
+            renderer.render(scene, camera);
         }
 
-        // 輪流喊注 (簡化版：此處僅模擬輪流權，實際遊玩由玩家口頭喊注)
-        function nextTurn() {
-            const currentPlayer = game.isP1Turn ? "玩家 1" : "玩家 2";
-            logMessage(`💬 ${currentPlayer} 已喊注，換下一位。`);
-            game.isP1Turn = !game.isP1Turn;
-            game.isPeeking = false; // 換人時自動遮牌，防止偷看
-            document.getElementById('peek-btn').innerText = "看我的骰子";
-            updateUI();
-        }
+        // 視窗大小改變時自動調整 3D 尺寸
+        window.addEventListener('resize', () => {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
 
-        // 抓鬼（結算開牌）
-        function challenge() {
-            game.isGameActive = false;
-            const challenger = game.isP1Turn ? "玩家 1" : "玩家 2";
-            const loser = game.isP1Turn ? "玩家 2" : "玩家 1";
-            
-            statusEl.innerText = `🚨 ${challenger} 喊了「抓鬼」！全場開牌！`;
-
-            // 強制顯示雙方所有骰子
-            document.getElementById('p1-dice').innerHTML = game.p1Dice.map(val => `<div class="dice">${val}</div>`).join('');
-            document.getElementById('p2-dice').innerHTML = game.p2Dice.map(val => `<div class="dice">${val}</div>`).join('');
-
-            // 統計各點數總數
-            const allDice = [...game.p1Dice, ...game.p2Dice];
-            const counts = {};
-            allDice.forEach(x => counts[x] = (counts[x] || 0) + 1);
-
-            // 印出統計結果到 Log
-            logMessage(`🔔 【開牌結果】`);
-            logMessage(`玩家 1 的骰子: ${game.p1Dice.join(', ')}`);
-            logMessage(`玩家 2 的骰子: ${game.p2Dice.join(', ')}`);
-            
-            let countStr = "場上各點數統計：";
-            for(let i=1; i<=6; i++) {
-                if(counts[i]) countStr += `[${i}點]: ${counts[i]}個 | `;
-            }
-            logMessage(countStr);
-            logMessage(`請根據場上實際數量，判定是 ${challenger} 抓對，還是 ${loser} 沒吹牛！`);
-
-            // 禁用按鈕
-            document.getElementById('peek-btn').disabled = true;
-            document.getElementById('call-btn').disabled = true;
-            document.getElementById('liar-btn').disabled = true;
-        }
-
-        // 記錄訊息
-        function logMessage(msg) {
-            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            logEl.innerHTML += `<div>[${time}] ${msg}</div>`;
-            logEl.scrollTop = logEl.scrollHeight;
-        }
+        window.onload = init;
     </script>
 </body>
 </html>
