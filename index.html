@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>線上吹牛骰子遊戲 🎲</title>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --accent-color: #e74c3c;
+            --bg-color: #ecf0f1;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            color: var(--primary-color);
+            margin-bottom: 10px;
+        }
+
+        .game-container {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 600px;
+            text-align: center;
+        }
+
+        .status-board {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            color: var(--primary-color);
+        }
+
+        .player-area {
+            border: 2px dashed #bdc3c7;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            background: #fafafa;
+        }
+
+        .player-area.active {
+            border-color: var(--accent-color);
+            background: #fff5f5;
+        }
+
+        .dice-container {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 10px;
+            min-height: 60px;
+        }
+
+        .dice {
+            width: 50px;
+            height: 50px;
+            background: white;
+            border: 2px solid #333;
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.8rem;
+            font-weight: bold;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .dice.hidden {
+            background: #7f8c8d;
+            color: #7f8c8d;
+            border-color: #7f8c8d;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background-color: #34495e;
+        }
+
+        button.action-btn {
+            background-color: var(--accent-color);
+        }
+
+        button.action-btn:hover {
+            background-color: #c0392b;
+        }
+
+        button:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+
+        .log {
+            margin-top: 20px;
+            text-align: left;
+            max-height: 150px;
+            overflow-y: auto;
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 10px;
+            border-radius: 6px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🎲 吹牛骰子派對</h1>
+    
+    <div class="game-container">
+        <div class="status-board" id="status">點擊「開始遊戲」來搖骰子！</div>
+
+        <div class="player-area" id="p1-area">
+            <h3>玩家 1 (你)</h3>
+            <div class="dice-container" id="p1-dice"></div>
+        </div>
+
+        <div class="player-area" id="p2-area">
+            <h3>玩家 2 (對手)</h3>
+            <div class="dice-container" id="p2-dice"></div>
+        </div>
+
+        <div class="controls">
+            <button id="start-btn" onclick="initGame()">開始遊戲 / 重來</button>
+            <button id="peek-btn" onclick="togglePeek()" disabled>看我的骰子</button>
+            <button id="call-btn" class="action-btn" onclick="nextTurn()" disabled>喊注 / 換下一人</button>
+            <button id="liar-btn" class="action-btn" onclick="challenge()" disabled>抓鬼 (抓吹牛)！</button>
+        </div>
+
+        <div class="log" id="game-log">
+            <div>遊戲紀錄將顯示在這裡...</div>
+        </div>
+    </div>
+
+    <script>
+        // 遊戲狀態管理
+        let game = {
+            p1Dice: [],
+            p2Dice: [],
+            isP1Turn: true,
+            isGameActive: false,
+            isPeeking: false
+        };
+
+        const statusEl = document.getElementById('status');
+        const logEl = document.getElementById('game-log');
+
+        // 隨機生成 5 顆骰子
+        function rollDice() {
+            return Array.from({ length: 5 }, () => Math.floor(Math.random() * 6) + 1);
+        }
+
+        // 初始化遊戲
+        function initGame() {
+            game.p1Dice = rollDice();
+            game.p2Dice = rollDice();
+            game.isP1Turn = true;
+            game.isGameActive = true;
+            game.isPeeking = false;
+
+            // 啟用/禁用按鈕
+            document.getElementById('peek-btn').disabled = false;
+            document.getElementById('call-btn').disabled = false;
+            document.getElementById('liar-btn').disabled = false;
+            
+            logMessage("🆕 遊戲開始！雙方骰子已蓋上。");
+            updateUI();
+        }
+
+        // 更新畫面
+        function updateUI() {
+            if (!game.isGameActive) return;
+
+            // 更新當前輪到誰
+            if (game.isP1Turn) {
+                statusEl.innerText = "輪到【玩家 1】行動（請喊注或抓鬼）";
+                document.getElementById('p1-area').classList.add('active');
+                document.getElementById('p2-area').classList.remove('active');
+            } else {
+                statusEl.innerText = "輪到【玩家 2】行動（請喊注或抓鬼）";
+                document.getElementById('p2-area').classList.add('active');
+                document.getElementById('p1-area').classList.remove('active');
+            }
+
+            // 渲染玩家 1 的骰子 (根據 Peek 狀態決定是否隱藏)
+            const p1Container = document.getElementById('p1-dice');
+            p1Container.innerHTML = game.p1Dice.map(val => 
+                `<div class="dice ${game.isPeeking ? '' : 'hidden'}">${val}</div>`
+            ).join('');
+
+            // 渲染玩家 2 的骰子 (單機版預設永遠隱藏，直到開牌)
+            const p2Container = document.getElementById('p2-dice');
+            p2Container.innerHTML = game.p2Dice.map(() => 
+                `<div class="dice hidden">?</div>`
+            ).join('');
+        }
+
+        // 看牌/遮牌切換
+        function togglePeek() {
+            game.isPeeking = !game.isPeeking;
+            const peekBtn = document.getElementById('peek-btn');
+            peekBtn.innerText = game.isPeeking ? "遮住我的骰子" : "看我的骰子";
+            updateUI();
+        }
+
+        // 輪流喊注 (簡化版：此處僅模擬輪流權，實際遊玩由玩家口頭喊注)
+        function nextTurn() {
+            const currentPlayer = game.isP1Turn ? "玩家 1" : "玩家 2";
+            logMessage(`💬 ${currentPlayer} 已喊注，換下一位。`);
+            game.isP1Turn = !game.isP1Turn;
+            game.isPeeking = false; // 換人時自動遮牌，防止偷看
+            document.getElementById('peek-btn').innerText = "看我的骰子";
+            updateUI();
+        }
+
+        // 抓鬼（結算開牌）
+        function challenge() {
+            game.isGameActive = false;
+            const challenger = game.isP1Turn ? "玩家 1" : "玩家 2";
+            const loser = game.isP1Turn ? "玩家 2" : "玩家 1";
+            
+            statusEl.innerText = `🚨 ${challenger} 喊了「抓鬼」！全場開牌！`;
+
+            // 強制顯示雙方所有骰子
+            document.getElementById('p1-dice').innerHTML = game.p1Dice.map(val => `<div class="dice">${val}</div>`).join('');
+            document.getElementById('p2-dice').innerHTML = game.p2Dice.map(val => `<div class="dice">${val}</div>`).join('');
+
+            // 統計各點數總數
+            const allDice = [...game.p1Dice, ...game.p2Dice];
+            const counts = {};
+            allDice.forEach(x => counts[x] = (counts[x] || 0) + 1);
+
+            // 印出統計結果到 Log
+            logMessage(`🔔 【開牌結果】`);
+            logMessage(`玩家 1 的骰子: ${game.p1Dice.join(', ')}`);
+            logMessage(`玩家 2 的骰子: ${game.p2Dice.join(', ')}`);
+            
+            let countStr = "場上各點數統計：";
+            for(let i=1; i<=6; i++) {
+                if(counts[i]) countStr += `[${i}點]: ${counts[i]}個 | `;
+            }
+            logMessage(countStr);
+            logMessage(`請根據場上實際數量，判定是 ${challenger} 抓對，還是 ${loser} 沒吹牛！`);
+
+            // 禁用按鈕
+            document.getElementById('peek-btn').disabled = true;
+            document.getElementById('call-btn').disabled = true;
+            document.getElementById('liar-btn').disabled = true;
+        }
+
+        // 記錄訊息
+        function logMessage(msg) {
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            logEl.innerHTML += `<div>[${time}] ${msg}</div>`;
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+    </script>
+</body>
+</html>
