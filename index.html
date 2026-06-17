@@ -15,22 +15,25 @@
         }
         #canvas-container { width: 100%; flex-grow: 1; position: relative; }
         
-        /* ======== 全新 UI 容器架構 (解決重疊問題) ======== */
         #bottom-ui-container {
             position: absolute; bottom: 25px; width: 100%;
             display: flex; flex-direction: column; align-items: center;
-            gap: 15px; /* 兩層面板的間距 */
-            z-index: 10;
-            pointer-events: none; /* 讓點擊可以穿透空隙到 3D 畫布 */
+            gap: 15px; z-index: 10; pointer-events: none; 
         }
 
-        #extract-ui, #ui-layer {
-            display: none; 
-            justify-content: center; flex-wrap: wrap; gap: 10px; 
-            width: 95%; max-width: 450px;
-            pointer-events: auto; /* 讓按鈕可以被點擊 */
+        /* 遊戲主按鈕列 */
+        #ui-layer {
+            display: none; justify-content: center; flex-wrap: wrap; gap: 10px; 
+            width: 95%; max-width: 450px; pointer-events: auto; 
         }
-        /* =================================================== */
+
+        /* 🎯 抓骰子專用面板 (改用 Grid 網格系統確保按鈕絕對等大) */
+        #extract-ui {
+            display: none; /* 觸發時改為 grid */
+            grid-template-columns: repeat(3, 1fr); /* 切成 3 等份寬度 */
+            gap: 10px; width: 95%; max-width: 400px;
+            pointer-events: auto; 
+        }
 
         button {
             padding: 15px 25px; font-size: 1.1rem; font-weight: bold;
@@ -45,13 +48,14 @@
         .btn-shake { background: #f1c40f; color: black; min-width: 120px; }
         .btn-menu { background: #7f8c8d; color: white; padding: 15px 20px; }
         
-        /* 抓骰按鈕微調 */
+        /* 取骰按鈕基礎樣式與分組顏色 */
         .btn-extract { 
-            background: #9b59b6; color: white; 
-            padding: 10px 15px; font-size: 0.95rem; border-radius: 12px; 
-            flex-grow: 1; text-align: center;
+            color: white; padding: 12px 0; font-size: 1rem; 
+            border-radius: 12px; text-align: center; width: 100%;
         }
-        .btn-extract.small-big { background: #e67e22; }
+        .color-rb { background: #c0392b; } /* 紅黑：深酒紅 */
+        .color-oe { background: #8e44ad; } /* 單雙：羅蘭紫 */
+        .color-bs { background: #d35400; } /* 大小：深橘色 */
 
         #menu-screen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -120,12 +124,13 @@
 
     <div id="bottom-ui-container">
         <div id="extract-ui">
-            <button class="btn-extract" onclick="extractDice('red')">拿紅</button>
-            <button class="btn-extract" onclick="extractDice('black')">拿黑</button>
-            <button class="btn-extract" onclick="extractDice('odd')">拿單</button>
-            <button class="btn-extract" onclick="extractDice('even')">拿雙</button>
-            <button class="btn-extract small-big" onclick="extractDice('small')">拿小(1-3)</button>
-            <button class="btn-extract small-big" onclick="extractDice('big')">拿大(4-6)</button>
+            <button class="btn-extract color-rb" onclick="extractDice('red')">拿紅</button>
+            <button class="btn-extract color-oe" onclick="extractDice('odd')">拿單</button>
+            <button class="btn-extract color-bs" onclick="extractDice('small')">拿小</button>
+            
+            <button class="btn-extract color-rb" onclick="extractDice('black')">拿黑</button>
+            <button class="btn-extract color-oe" onclick="extractDice('even')">拿雙</button>
+            <button class="btn-extract color-bs" onclick="extractDice('big')">拿大</button>
         </div>
 
         <div id="ui-layer">
@@ -135,6 +140,7 @@
             <button class="btn-open" id="open-btn" onclick="toggleOpen()">🚨 開牌！</button>
         </div>
     </div>
+
     <div id="signature">蔡肯特製作</div>
 
     <script>
@@ -285,8 +291,6 @@
             const container = document.getElementById('canvas-container');
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 100);
-            
-            // 相機再往上拉高、往後退一點，讓下方的空間更寬裕，不會被按鈕遮擋
             camera.position.set(0, 17, 13); 
             camera.lookAt(0, 0, 0);
 
@@ -449,159 +453,3 @@
                     let targetZ = base.z + Math.round((dice.startRot.z - base.z)/(Math.PI*2)) * Math.PI*2;
 
                     dice.targetRot.set(targetX + extraSpinsX*Math.PI*2, targetY + extraSpinsY*Math.PI*2, targetZ + extraSpinsZ*Math.PI*2);
-
-                    dice.startPos.copy(dice.mesh.position);
-                    dice.targetPos.set(dice.basePos.x + (Math.random()*0.4 - 0.2), 0.75, dice.basePos.z + (Math.random()*0.4 - 0.2));
-
-                    dice.stopDuration = Math.floor(60 + Math.random() * 90);
-                    dice.stopFrames = 0; dice.isStopped = false;
-                }
-            });
-        }
-
-        function toggleOpen() {
-            if(gameState !== 'idle' || currentMode === 'bowl') return;
-            cupState = (cupState === 'open') ? 'closed' : 'open';
-            document.getElementById('open-btn').innerText = (cupState === 'open') ? "蓋上骰鐘" : "🚨 開牌！";
-            
-            if(currentMode === 'extract') {
-                document.getElementById('extract-ui').style.display = (cupState === 'open') ? 'flex' : 'none';
-            }
-        }
-
-        // --- 核心：紅黑單雙大小 取骰邏輯 ---
-        function extractDice(type) {
-            if(gameState !== 'idle') return;
-            let matched = 0;
-            
-            diceArray.forEach(dice => {
-                if(!dice.isExtracted) {
-                    let val = dice.faceValue;
-                    let isMatch = false;
-                    if(type === 'red' && (val === 1 || val === 4)) isMatch = true;
-                    if(type === 'black' && [2,3,5,6].includes(val)) isMatch = true;
-                    if(type === 'odd' && val % 2 !== 0) isMatch = true;
-                    if(type === 'even' && val % 2 === 0) isMatch = true;
-                    if(type === 'small' && val <= 3) isMatch = true;
-                    if(type === 'big' && val >= 4) isMatch = true;
-
-                    if(isMatch) {
-                        dice.isExtracted = true;
-                        
-                        let spacing = 1.6;
-                        let startX = -((diceCount - 1) * spacing) / 2;
-                        
-                        dice.startPos.copy(dice.mesh.position);
-                        // 把取出來的骰子拉得離中心更近一點點 (z=5.5)，避免被底下的 UI 面板遮擋
-                        dice.targetPos.set(startX + extractedCount * spacing, 0.75, 5.5); 
-                        
-                        dice.startRot.copy(dice.mesh.rotation);
-                        dice.targetRot.copy(dice.mesh.rotation);
-
-                        dice.isStopped = false; 
-                        dice.stopFrames = 0;
-                        dice.stopDuration = 30; 
-                        
-                        extractedCount++;
-                        matched++;
-                    }
-                }
-            });
-
-            if(matched > 0) {
-                 playClackSound();
-                 if(extractedCount === diceCount) {
-                     document.getElementById('debug-log').innerText = "全部抓完啦！可重新搖骰。";
-                 }
-            } else {
-                 alert("場上沒有符合條件的骰子喔！");
-            }
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-
-            if (gameState === 'rolling') {
-                if (currentMode !== 'bowl') {
-                    containerGroup.position.x = (Math.random() - 0.5) * 1.5;
-                    containerGroup.position.z = (Math.random() - 0.5) * 1.5;
-                }
-                
-                diceArray.forEach(dice => {
-                    if(!dice.isExtracted) {
-                        dice.mesh.rotation.x += dice.spinVel.x; dice.mesh.rotation.y += dice.spinVel.y; dice.mesh.rotation.z += dice.spinVel.z;
-                        let limit = currentMode === 'bowl' ? 1.5 : 0.5;
-                        dice.mesh.position.x = dice.basePos.x + (Math.random() - 0.5) * limit;
-                        dice.mesh.position.z = dice.basePos.z + (Math.random() - 0.5) * limit;
-                        dice.mesh.position.y = 0.75 + Math.random() * 2.5;
-
-                        if (Math.random() < 0.1) { playClackSound(); if(navigator.vibrate) navigator.vibrate(10); }
-                    }
-                });
-
-            } else {
-                let allStopped = true;
-                
-                if (gameState === 'stopping' && currentMode !== 'bowl') {
-                    containerGroup.position.set(0, 3.75, 0); 
-                }
-
-                diceArray.forEach(dice => {
-                    if (!dice.isStopped) {
-                        dice.stopFrames++;
-                        let t = dice.stopFrames / dice.stopDuration;
-                        
-                        if (t >= 1) {
-                            t = 1; dice.isStopped = true;
-                            if(gameState === 'stopping') { playClackSound(); if(navigator.vibrate) navigator.vibrate(20); }
-                        } else {
-                            allStopped = false;
-                        }
-
-                        let ease = 1 - Math.pow(1 - t, 3);
-                        dice.mesh.rotation.x = dice.startRot.x + (dice.targetRot.x - dice.startRot.x) * ease;
-                        dice.mesh.rotation.y = dice.startRot.y + (dice.targetRot.y - dice.startRot.y) * ease;
-                        dice.mesh.rotation.z = dice.startRot.z + (dice.targetRot.z - dice.startRot.z) * ease;
-
-                        let bounce = (gameState === 'stopping' && !dice.isExtracted) ? Math.abs(Math.sin(t * Math.PI * 6)) * (1 - ease) * 1.5 : 0;
-                        dice.mesh.position.x = dice.startPos.x + (dice.targetPos.x - dice.startPos.x) * ease;
-                        dice.mesh.position.z = dice.startPos.z + (dice.targetPos.z - dice.startPos.z) * ease;
-                        dice.mesh.position.y = dice.startPos.y + (dice.targetPos.y - dice.startPos.y) * ease + bounce;
-
-                        if (gameState === 'stopping' && t < 0.9 && Math.random() < (1-ease)*0.1) playClackSound();
-                    }
-                });
-
-                if (gameState === 'stopping' && allStopped) {
-                    gameState = 'idle';
-                    let shakeBtn = document.getElementById('shake-btn');
-                    shakeBtn.innerText = "⚡ 搖骰"; shakeBtn.disabled = false;
-                    document.getElementById('debug-log').innerText = "已就緒";
-                }
-            }
-
-            if (gameState === 'idle' && currentMode !== 'bowl') {
-                let targetY = 3.75; let targetRotX = 0; let targetZ = 0;
-                if (cupState === 'peeking') {
-                    targetY = 9.5; targetRotX = -0.7; targetZ = -3.5;     
-                } else if (cupState === 'open') {
-                    targetY = 20;
-                }
-                containerGroup.position.y += (targetY - containerGroup.position.y) * 0.15;
-                containerGroup.position.z += (targetZ - containerGroup.position.z) * 0.15;
-                containerGroup.rotation.x += (targetRotX - containerGroup.rotation.x) * 0.15;
-            }
-
-            renderer.render(scene, camera);
-        }
-
-        window.addEventListener('resize', () => {
-            if(!camera) return;
-            const container = document.getElementById('canvas-container');
-            camera.aspect = container.clientWidth / container.clientHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(container.clientWidth, container.clientHeight);
-        });
-    </script>
-</body>
-</html>
