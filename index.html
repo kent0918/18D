@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>🍺 吹牛數位骰鐘</title>
+    <title>🍺 吹牛數位骰鐘 (完美視角版)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
         body {
@@ -27,9 +27,8 @@
         button:active { transform: scale(0.95); }
         .btn-peek { background: #3498db; color: white; }
         .btn-open { background: #e74c3c; color: white; }
-        .btn-shake { background: #f1c40f; color: black; display: none; } /* 備用按鈕 */
+        .btn-shake { background: #f1c40f; color: black; display: none; }
 
-        /* 啟動畫面 (需要用戶點擊才能獲取手機感測器權限) */
         #start-screen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9); z-index: 100;
@@ -68,11 +67,10 @@
     <script>
         let scene, camera, renderer, cupGroup, diceArray = [];
         let isRolling = false;
-        let cupState = 'closed'; // 'closed', 'peeking', 'open'
+        let cupState = 'closed'; 
         let rollFrames = 0;
         const diceCount = 5;
 
-        // 生成高畫質 1~6 點骰子貼圖
         function createDiceTexture(number) {
             const canvas = document.createElement('canvas');
             canvas.width = 256; canvas.height = 256;
@@ -101,9 +99,8 @@
             const container = document.getElementById('canvas-container');
             scene = new THREE.Scene();
             
-            // 相機設定：從玩家視角略微向下看
             camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 100);
-            camera.position.set(0, 10, 12);
+            camera.position.set(0, 12, 14); // 視角拉高一點，視野更好
             camera.lookAt(0, 0, 0);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -111,14 +108,12 @@
             renderer.shadowMap.enabled = true;
             container.appendChild(renderer.domElement);
 
-            // 光源
             scene.add(new THREE.AmbientLight(0xffffff, 0.6));
             const spotLight = new THREE.SpotLight(0xffffff, 0.8);
             spotLight.position.set(0, 20, 10);
             spotLight.castShadow = true;
             scene.add(spotLight);
 
-            // 桌面 (賭場暗紅色)
             const floor = new THREE.Mesh(
                 new THREE.PlaneGeometry(50, 50),
                 new THREE.MeshStandardMaterial({ color: 0x5e1010, roughness: 0.8 })
@@ -127,38 +122,36 @@
             floor.receiveShadow = true;
             scene.add(floor);
 
-            // 建立 3D 骰鐘 (空心圓柱體 + 頂蓋)
             cupGroup = new THREE.Group();
-            const cupGeo = new THREE.CylinderGeometry(4.5, 5, 8, 32, 1, true);
+            const cupGeo = new THREE.CylinderGeometry(4.5, 5, 7.5, 32, 1, true); // 骰鐘改淺一點
             const cupMat = new THREE.MeshStandardMaterial({ color: 0x111111, side: THREE.DoubleSide, roughness: 0.4 });
             const cupBody = new THREE.Mesh(cupGeo, cupMat);
             
             const capGeo = new THREE.CircleGeometry(4.5, 32);
             const capMesh = new THREE.Mesh(capGeo, cupMat);
             capMesh.rotation.x = -Math.PI / 2;
-            capMesh.position.y = 4;
+            capMesh.position.y = 3.75;
             
             cupBody.castShadow = true;
             cupGroup.add(cupBody);
             cupGroup.add(capMesh);
-            cupGroup.position.y = 4; // 貼齊地面
+            cupGroup.position.y = 3.75;
             scene.add(cupGroup);
 
-            // 建立骰子
             const diceGeo = new THREE.BoxGeometry(1.5, 1.5, 1.5);
             const materials = [
-                new THREE.MeshStandardMaterial({ map: createDiceTexture(1), roughness: 0.2 }), // Right
-                new THREE.MeshStandardMaterial({ map: createDiceTexture(2), roughness: 0.2 }), // Left
-                new THREE.MeshStandardMaterial({ map: createDiceTexture(3), roughness: 0.2 }), // Top
-                new THREE.MeshStandardMaterial({ map: createDiceTexture(4), roughness: 0.2 }), // Bottom
-                new THREE.MeshStandardMaterial({ map: createDiceTexture(5), roughness: 0.2 }), // Front
-                new THREE.MeshStandardMaterial({ map: createDiceTexture(6), roughness: 0.2 })  // Back
+                new THREE.MeshStandardMaterial({ map: createDiceTexture(1), roughness: 0.2 }), 
+                new THREE.MeshStandardMaterial({ map: createDiceTexture(2), roughness: 0.2 }), 
+                new THREE.MeshStandardMaterial({ map: createDiceTexture(3), roughness: 0.2 }), 
+                new THREE.MeshStandardMaterial({ map: createDiceTexture(4), roughness: 0.2 }), 
+                new THREE.MeshStandardMaterial({ map: createDiceTexture(5), roughness: 0.2 }), 
+                new THREE.MeshStandardMaterial({ map: createDiceTexture(6), roughness: 0.2 })  
             ];
 
-            // 隨機但不會重疊的位置設定
+            // 把骰子集中的範圍縮小 (由 1.8 縮小為 1.4)，確保都在正中間
             const basePositions = [
-                {x: -1.8, z: -1.8}, {x: 1.8, z: -1.8}, {x: 0, z: 0},
-                {x: -1.8, z: 1.8}, {x: 1.8, z: 1.8}
+                {x: -1.4, z: -1.4}, {x: 1.4, z: -1.4}, {x: 0, z: 0},
+                {x: -1.4, z: 1.4}, {x: 1.4, z: 1.4}
             ];
 
             for(let i=0; i<diceCount; i++) {
@@ -174,31 +167,26 @@
             }
 
             animate();
-            triggerShake(); // 初始先搖一次
+            triggerShake(); 
         }
 
-        // 啟動遊戲 (要求手機權限)
         function initGame() {
             document.getElementById('start-screen').style.display = 'none';
             init3D();
 
-            // 請求手機加速度計權限 (iOS 13+ 必備)
             if (typeof DeviceMotionEvent.requestPermission === 'function') {
                 DeviceMotionEvent.requestPermission().then(permissionState => {
                     if (permissionState === 'granted') {
                         window.addEventListener('devicemotion', handleMotion);
                     } else {
-                        document.getElementById('shake-btn').style.display = 'block'; // 被拒絕就顯示備用按鈕
+                        document.getElementById('shake-btn').style.display = 'block'; 
                     }
                 }).catch(console.error);
             } else {
-                // Android 或舊版 iOS 直接監聽
                 window.addEventListener('devicemotion', handleMotion);
-                // 為了以防萬一沒感測器，還是顯示備用按鈕
                 document.getElementById('shake-btn').style.display = 'block';
             }
 
-            // 綁定偷看按鈕事件 (支援觸控與滑鼠)
             const peekBtn = document.getElementById('peek-btn');
             const startPeek = (e) => { e.preventDefault(); if(!isRolling) cupState = 'peeking'; };
             const endPeek = (e) => { e.preventDefault(); if(cupState === 'peeking') cupState = 'closed'; };
@@ -209,43 +197,39 @@
             window.addEventListener('touchend', endPeek);
         }
 
-        // 手機搖晃偵測
         let lastX = 0, lastY = 0, lastZ = 0;
         function handleMotion(event) {
             let acc = event.accelerationIncludingGravity;
             if (!acc || !acc.x) return;
             let delta = Math.abs(acc.x - lastX) + Math.abs(acc.y - lastY) + Math.abs(acc.z - lastZ);
             
-            if (delta > 25 && !isRolling) { // 搖晃力道大於 25 觸發
+            if (delta > 25 && !isRolling) { 
                 triggerShake();
             }
             lastX = acc.x; lastY = acc.y; lastZ = acc.z;
         }
 
-        // 搖骰子邏輯
         function triggerShake() {
             if(isRolling) return;
             isRolling = true;
-            cupState = 'closed'; // 強制蓋上
-            rollFrames = 45; // 搖晃動畫時長 (約 0.75 秒)
+            cupState = 'closed'; 
+            rollFrames = 45; 
             
-            if(navigator.vibrate) navigator.vibrate([50, 50, 50, 50, 100]); // 手機震動反饋
+            if(navigator.vibrate) navigator.vibrate([50, 50, 50, 50, 100]); 
             document.getElementById('debug-log').innerText = "搖晃中...";
 
-            // 預先計算好骰子落地的精準點數與角度
             const rotations = {
-                1: {x: 0, y: 0, z: Math.PI/2},   // 1點朝上
-                2: {x: 0, y: 0, z: -Math.PI/2},  // 2點朝上
-                3: {x: 0, y: 0, z: 0},           // 3點朝上
-                4: {x: Math.PI, y: 0, z: 0},     // 4點朝上
-                5: {x: -Math.PI/2, y: 0, z: 0},  // 5點朝上
-                6: {x: Math.PI/2, y: 0, z: 0}    // 6點朝上
+                1: {x: 0, y: 0, z: Math.PI/2},   
+                2: {x: 0, y: 0, z: -Math.PI/2},  
+                3: {x: 0, y: 0, z: 0},           
+                4: {x: Math.PI, y: 0, z: 0},     
+                5: {x: -Math.PI/2, y: 0, z: 0},  
+                6: {x: Math.PI/2, y: 0, z: 0}    
             };
 
             diceArray.forEach(dice => {
                 const result = Math.floor(Math.random() * 6) + 1;
                 const baseRot = rotations[result];
-                // 加上隨機的水平旋轉，讓骰子看起來更自然
                 const randomY = Math.random() * Math.PI * 2;
                 dice.targetRot.set(baseRot.x, randomY, baseRot.z);
             });
@@ -258,17 +242,14 @@
             openBtn.innerText = (cupState === 'open') ? "蓋上骰鐘" : "🚨 開牌！";
         }
 
-        // 動畫渲染循環
         function animate() {
             requestAnimationFrame(animate);
 
             if (isRolling) {
                 rollFrames--;
-                // 骰鐘劇烈震動
                 cupGroup.position.x = (Math.random() - 0.5) * 1.5;
                 cupGroup.position.z = (Math.random() - 0.5) * 1.5;
                 
-                // 骰子在裡面亂轉
                 diceArray.forEach(dice => {
                     dice.mesh.rotation.x += Math.random();
                     dice.mesh.rotation.y += Math.random();
@@ -277,38 +258,34 @@
                 });
 
                 if (rollFrames <= 0) {
-                    // 搖晃結束，骰子【瞬間絕對靜止】且平躺
                     isRolling = false;
-                    cupGroup.position.set(0, 4, 0); // 骰鐘歸位
+                    cupGroup.position.set(0, 3.75, 0); 
                     
                     diceArray.forEach(dice => {
                         dice.mesh.rotation.copy(dice.targetRot);
-                        // 加一點點微小的隨機位移，讓排列不要太死板，但絕對不重疊
+                        // 稍微減少落地的隨機位移，讓骰子不會跑到太邊緣
                         dice.mesh.position.set(
-                            dice.basePos.x + (Math.random()*0.6 - 0.3),
-                            0.75, // 絕對貼齊地面
-                            dice.basePos.z + (Math.random()*0.6 - 0.3)
+                            dice.basePos.x + (Math.random()*0.3 - 0.15),
+                            0.75, 
+                            dice.basePos.z + (Math.random()*0.3 - 0.15)
                         );
                     });
                     document.getElementById('debug-log').innerText = "已就緒，請喊注";
                 }
             } else {
-                // 處理骰鐘的掀開/蓋上動畫 (平滑移動)
-                let targetY = 4;
+                let targetY = 3.75;
                 let targetRotX = 0;
                 let targetZ = 0;
 
                 if (cupState === 'peeking') {
-                    // 偷看：微微抬起並向後傾斜
-                    targetY = 6.5; 
-                    targetRotX = -0.3;
-                    targetZ = -1.5;
+                    // 【關鍵修正】把骰鐘抬得更高、往後退更多、仰角更大！
+                    targetY = 9.5;      // 高度拉高 (原本 6.5)
+                    targetRotX = -0.7;  // 往後仰角加大 (原本 -0.3)
+                    targetZ = -3.5;     // 整體往後退 (原本 -1.5)
                 } else if (cupState === 'open') {
-                    // 開牌：整組拔高移開
                     targetY = 20;
                 }
 
-                // 使用 lerp 讓動畫滑順
                 cupGroup.position.y += (targetY - cupGroup.position.y) * 0.15;
                 cupGroup.position.z += (targetZ - cupGroup.position.z) * 0.15;
                 cupGroup.rotation.x += (targetRotX - cupGroup.rotation.x) * 0.15;
@@ -317,7 +294,6 @@
             renderer.render(scene, camera);
         }
 
-        // RWD 視窗縮放
         window.addEventListener('resize', () => {
             if(!camera) return;
             const container = document.getElementById('canvas-container');
