@@ -54,6 +54,18 @@
         #start-btn { background: #2ecc71; color: white; width: 100%; margin-top: 20px; padding: 15px; font-size: 1.3rem; }
         
         #debug-log { position: absolute; top: 10px; left: 10px; color: #aaa; font-size: 12px; pointer-events: none; z-index: 10; display: none; }
+
+        /* 作者署名樣式 */
+        #signature {
+            position: fixed;
+            bottom: 10px;
+            right: 15px;
+            color: rgba(255, 255, 255, 0.3); /* 半透明白色，低調有質感 */
+            font-size: 0.85rem;
+            letter-spacing: 1.5px;
+            z-index: 1000;
+            pointer-events: none; /* 防止擋住觸控操作 */
+        }
     </style>
 </head>
 <body>
@@ -93,6 +105,8 @@
         <button class="btn-open" id="open-btn" onclick="toggleOpen()">🚨 開牌！</button>
     </div>
 
+    <div id="signature">蔡肯特製作</div>
+
     <script>
         // --- 視覺與顏色設定 ---
         const THEME = {
@@ -101,8 +115,8 @@
             dotSpecial: '#e74c3c', 
             metalness: 0.5, 
             roughness: 0.25,
-            bowlColor: '#fcf9f2',  // 溫潤的象牙白 (古早陶瓷色)
-            bowlRimColor: '#3b5998' // 古風青花瓷的邊緣藍色
+            bowlColor: '#f0ead6',  
+            bowlRimColor: '#40515e' 
         };
 
         let currentMode = 'cup'; 
@@ -113,6 +127,35 @@
         let cupState = 'closed'; 
         let rollFrames = 0;
         let is3DInitialized = false;
+
+        // --- 音效系統 ---
+        let audioCtx;
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playClackSound() {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(600 + Math.random() * 400, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.05);
+            
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.03);
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.04);
+        }
 
         function changeDice(delta) {
             diceCount += delta;
@@ -128,6 +171,7 @@
         }
 
         function startGame() {
+            initAudio(); 
             currentMode = document.getElementById('game-mode').value;
             document.getElementById('menu-screen').style.display = 'none';
             document.getElementById('ui-layer').style.display = 'flex';
@@ -207,7 +251,6 @@
             spotLight.position.set(5, 25, 10); spotLight.castShadow = true;
             scene.add(spotLight);
 
-            // 稍微把木桌顏色調暖，襯托白瓷碗
             const floor = new THREE.Mesh(
                 new THREE.PlaneGeometry(50, 50),
                 new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.9 })
@@ -238,9 +281,7 @@
                 containerGroup.add(cupBody); containerGroup.add(capMesh);
                 containerGroup.position.y = 3.75;
             } else if (currentMode === 'bowl') {
-                // 【白瓷碗公本體】
                 const bowlGeo = new THREE.SphereGeometry(6, 32, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
-                // 陶瓷材質：粗糙度調低(0.15)讓它有光澤，像上了釉的瓷器
                 const bowlMat = new THREE.MeshStandardMaterial({ color: THEME.bowlColor, side: THREE.DoubleSide, roughness: 0.15, metalness: 0.05 });
                 const bowlMesh = new THREE.Mesh(bowlGeo, bowlMat);
                 bowlMesh.scale.set(1.2, 0.6, 1.2); 
@@ -248,13 +289,12 @@
                 bowlMesh.castShadow = true; bowlMesh.receiveShadow = true;
                 containerGroup.add(bowlMesh);
 
-                // 【古風青花瓷邊緣】
                 const rimGeo = new THREE.TorusGeometry(6, 0.25, 16, 32);
-                const rimMat = new THREE.MeshStandardMaterial({ color: THEME.bowlRimColor, roughness: 0.2, metalness: 0.05 });
+                const rimMat = new THREE.MeshStandardMaterial({ color: THEME.bowlRimColor, roughness: 0.3, metalness: 0.05 });
                 const rimMesh = new THREE.Mesh(rimGeo, rimMat);
                 rimMesh.rotation.x = Math.PI / 2;
                 rimMesh.scale.set(1.2, 1.2, 1.2);
-                rimMesh.position.y = 3.6; // 完美貼合碗口
+                rimMesh.position.y = 3.6; 
                 containerGroup.add(rimMesh);
 
                 containerGroup.position.y = 0;
@@ -294,11 +334,12 @@
 
         function triggerShake() {
             if(isRolling) return;
+            initAudio(); 
             isRolling = true;
             cupState = 'closed'; 
             rollFrames = 45; 
             
-            if(navigator.vibrate) navigator.vibrate([50, 50, 50, 50, 100]); 
+            if(navigator.vibrate) navigator.vibrate(100); 
             document.getElementById('debug-log').innerText = "搖晃中...";
 
             const rotations = {
@@ -325,6 +366,12 @@
 
             if (isRolling) {
                 rollFrames--;
+                
+                if (rollFrames % 4 === 0) {
+                    playClackSound();
+                    if(navigator.vibrate) navigator.vibrate(15); 
+                }
+
                 if (currentMode === 'cup') {
                     containerGroup.position.x = (Math.random() - 0.5) * 1.5;
                     containerGroup.position.z = (Math.random() - 0.5) * 1.5;
@@ -336,11 +383,14 @@
                     let limit = currentMode === 'bowl' ? 1.5 : 0.5;
                     dice.mesh.position.x = dice.basePos.x + (Math.random() - 0.5) * limit;
                     dice.mesh.position.z = dice.basePos.z + (Math.random() - 0.5) * limit;
-                    if(currentMode === 'bowl') dice.mesh.position.y = 0.75 + Math.random() * 2;
+                    if(currentMode === 'bowl') dice.mesh.position.y = 0.75 + Math.random() * 2.5; 
                 });
 
                 if (rollFrames <= 0) {
                     isRolling = false;
+                    playClackSound(); 
+                    if(navigator.vibrate) navigator.vibrate(30); 
+
                     if (currentMode === 'cup') containerGroup.position.set(0, 3.75, 0); 
                     
                     diceArray.forEach(dice => {
