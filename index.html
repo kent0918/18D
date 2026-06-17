@@ -66,7 +66,7 @@
                 <label>選擇遊戲容器：</label>
                 <select id="game-mode">
                     <option value="cup">🎲 吹牛 (密閉黑骰鐘)</option>
-                    <option value="bowl">🥣 十八仔 (公開大碗公)</option>
+                    <option value="bowl">🥣 十八仔 (古早味白瓷碗)</option>
                 </select>
             </div>
 
@@ -97,11 +97,12 @@
         // --- 視覺與顏色設定 ---
         const THEME = {
             diceBg: '#1a1a1a', 
-            dotNormal: '#ffffff', // 【修正】黃色點數改為純白色，對比更鮮明！
+            dotNormal: '#ffffff', 
             dotSpecial: '#e74c3c', 
             metalness: 0.5, 
             roughness: 0.25,
-            bowlColor: '#a01010' // 調整為更經典的明亮美耐皿紅
+            bowlColor: '#fcf9f2',  // 溫潤的象牙白 (古早陶瓷色)
+            bowlRimColor: '#3b5998' // 古風青花瓷的邊緣藍色
         };
 
         let currentMode = 'cup'; 
@@ -160,7 +161,6 @@
             }
 
             const peekBtn = document.getElementById('peek-btn');
-            // 【致命 Bug 修正】：移除了 e.preventDefault()，現在按鈕不會再互相干擾卡死了！
             const startPeek = () => { if(!isRolling && currentMode === 'cup') cupState = 'peeking'; };
             const endPeek = () => { if(cupState === 'peeking') cupState = 'closed'; };
             
@@ -194,7 +194,6 @@
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 100);
             
-            // 將相機稍微拉近一點，讓碗公跟骰鐘看起來更大
             camera.position.set(0, 14, 12); 
             camera.lookAt(0, 0, 0);
 
@@ -208,9 +207,10 @@
             spotLight.position.set(5, 25, 10); spotLight.castShadow = true;
             scene.add(spotLight);
 
+            // 稍微把木桌顏色調暖，襯托白瓷碗
             const floor = new THREE.Mesh(
                 new THREE.PlaneGeometry(50, 50),
-                new THREE.MeshStandardMaterial({ color: 0x2c1b18, roughness: 0.9 })
+                new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.9 })
             );
             floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true;
             scene.add(floor);
@@ -238,14 +238,25 @@
                 containerGroup.add(cupBody); containerGroup.add(capMesh);
                 containerGroup.position.y = 3.75;
             } else if (currentMode === 'bowl') {
-                // 【視角修正】：把半圓形的碗公壓扁 (scale Y: 0.6) 並拉寬，模擬真實十八仔的寬口淺底碗公
+                // 【白瓷碗公本體】
                 const bowlGeo = new THREE.SphereGeometry(6, 32, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
-                const bowlMat = new THREE.MeshStandardMaterial({ color: THEME.bowlColor, side: THREE.DoubleSide, roughness: 0.3, metalness: 0.1 });
+                // 陶瓷材質：粗糙度調低(0.15)讓它有光澤，像上了釉的瓷器
+                const bowlMat = new THREE.MeshStandardMaterial({ color: THEME.bowlColor, side: THREE.DoubleSide, roughness: 0.15, metalness: 0.05 });
                 const bowlMesh = new THREE.Mesh(bowlGeo, bowlMat);
                 bowlMesh.scale.set(1.2, 0.6, 1.2); 
-                bowlMesh.position.y = 3.6; // 讓壓扁後的碗底剛好接觸桌面
+                bowlMesh.position.y = 3.6; 
                 bowlMesh.castShadow = true; bowlMesh.receiveShadow = true;
                 containerGroup.add(bowlMesh);
+
+                // 【古風青花瓷邊緣】
+                const rimGeo = new THREE.TorusGeometry(6, 0.25, 16, 32);
+                const rimMat = new THREE.MeshStandardMaterial({ color: THEME.bowlRimColor, roughness: 0.2, metalness: 0.05 });
+                const rimMesh = new THREE.Mesh(rimGeo, rimMat);
+                rimMesh.rotation.x = Math.PI / 2;
+                rimMesh.scale.set(1.2, 1.2, 1.2);
+                rimMesh.position.y = 3.6; // 完美貼合碗口
+                containerGroup.add(rimMesh);
+
                 containerGroup.position.y = 0;
             }
             scene.add(containerGroup);
